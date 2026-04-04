@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AI小说生成系统
 
 一个基于MySQL外部记忆的AI小说生成系统，解决AI无法记住剧情、角色状态混乱、世界设定丢失的问题。
@@ -272,3 +273,6 @@ A: 修改 `backend/.env` 中的 `DB_PASSWORD`
 ## 许可证
 
 MIT
+=======
+# ai-novel-generator
+>>>>>>> origin/main
