@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI小说生成系统</title>
+  <style>
+    /* 全局弹窗层级覆盖 */
+    .el-overlay.relationship-modal,
+    .el-overlay-dialog:has(.relationship-graph-dialog) {
+      z-index: 99998 !important;
+    }
+    .el-dialog.relationship-graph-dialog {
+      z-index: 99999 !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
