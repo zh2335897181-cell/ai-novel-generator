@@ -1,25 +1,58 @@
-# Dependencies
+# 环境变量文件 - 包含敏感信息
+backend/.env
+backend/.env.local
+backend/.env.*.local
+
+# Node依赖
 node_modules/
+npm-debug.log
+yarn-error.log
 package-lock.json
+yarn.lock
 
-# Environment
-.env
-.env.local
-
-# IDE
-.idea/
+# IDE配置
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
+.DS_Store
 
-# Build
+# 构建输出
 dist/
 build/
+*.tsbuildinfo
 
-# Logs
+# 日志文件
+logs/
 *.log
-npm-debug.log*
 
-# OS
-.DS_Store
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 操作系统文件
 Thumbs.db
+.DS_Store
+
+# 编辑器备份
+*.bak
+*.backup
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 缓存
+.cache/
+.eslintcache
+
+# 本地开发文件
+.local/
+local.json
