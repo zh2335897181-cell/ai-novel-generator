@@ -1,4 +1,4 @@
-const db = require('../config/database')
+import db from '../config/database.js'
 
 /**
  * 获取小说的时间线事件列表
@@ -219,7 +219,7 @@ async function deleteTimelineEvent(req, res) {
   }
 }
 
-module.exports = {
+export {
   getTimelineEvents,
   createTimelineEvent,
   updateTimelineEvent,
