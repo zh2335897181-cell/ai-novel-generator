@@ -284,16 +284,16 @@
     <!-- 游客倒计时提示 -->
     <div v-if="showGuestWarning" class="guest-warning-banner">
       <el-icon><Timer /></el-icon>
-      <span>游客体验剩余时间：{{ remainingTime }} 分钟</span>
+      <span>游客体验剩余 {{ formattedTime }}</span>
       <el-button type="primary" size="small" @click="goToLogin">
-        登录解锁无限时长
+        立即登录
       </el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 
@@ -310,8 +310,18 @@ const userStore = useUserStore()
 const { isLoggedIn } = storeToRefs(userStore)
 const featuresRef = ref(null)
 const showGuestWarning = ref(false)
-const remainingTime = ref(10)
+const remainingMs = ref(0)
 const guestTimer = ref(null)
+
+// 格式化剩余时间为 "X分Y秒Z毫秒"
+const formattedTime = computed(() => {
+  const ms = remainingMs.value
+  const minutes = Math.floor(ms / 60000)
+  const seconds = Math.floor((ms % 60000) / 1000)
+  const milliseconds = Math.floor((ms % 1000) / 10) // 显示到百分之一秒
+  
+  return `${minutes}分${seconds}秒${milliseconds.toString().padStart(2, '0')}`
+})
 
 // 滚动到功能区域
 const scrollToFeatures = () => {
@@ -320,9 +330,11 @@ const scrollToFeatures = () => {
 
 // 跳转到登录页或小说列表（根据登录状态）
 const goToLogin = () => {
-  // 检查localStorage中是否有token，更可靠的登录状态判断
+  // 检查是否已登录或处于游客模式
   const hasToken = !!localStorage.getItem('token')
-  if (isLoggedIn.value || hasToken) {
+  const isGuest = localStorage.getItem('guestMode') === 'true'
+  
+  if (isLoggedIn.value || hasToken || isGuest) {
     router.push('/novels')
   } else {
     router.push('/login')
@@ -330,7 +342,15 @@ const goToLogin = () => {
 }
 
 // 游客登录
-const goToGuestLogin = () => {
+const goToGuestLogin = async () => {
+  // 先检查 IP 是否被锁定
+  const isLocked = await userStore.checkGuestIPLock()
+  if (isLocked) {
+    ElMessage.warning('该设备游客体验次数已用完，请注册账号继续使用')
+    router.push('/login')
+    return
+  }
+  
   // 设置游客模式并记录开始时间
   const guestStartTime = Date.now()
   localStorage.setItem('guestMode', 'true')
@@ -355,23 +375,24 @@ onMounted(() => {
     // 更新显示剩余时间（已考虑暂停）
     const result = userStore.checkGuestTimeLimit()
     
-    if (result.remainingMinutes > 0) {
+    if (result.remainingMs > 0) {
       showGuestWarning.value = true
-      remainingTime.value = result.remainingMinutes
+      remainingMs.value = result.remainingMs
       
-      // 每秒更新倒计时显示
+      // 每50ms更新倒计时显示，让数字变化更流畅
       const timer = setInterval(() => {
         const newResult = userStore.checkGuestTimeLimit()
-        remainingTime.value = newResult.remainingMinutes
+        remainingMs.value = newResult.remainingMs
         
-        if (newResult.isExpired || newResult.remainingMinutes <= 0) {
+        if (newResult.isExpired || newResult.remainingMs <= 0) {
           clearInterval(timer)
           ElMessage.warning('体验时间已结束，请登录继续使用')
           localStorage.removeItem('guestMode')
           localStorage.removeItem('guestStartTime')
+          localStorage.removeItem('guestPausedMs')
           router.push('/login')
         }
-      }, 1000)
+      }, 50) // 50ms更新一次，让倒计时更流畅
       
       // 保存timer以便清理
       guestTimer.value = timer
@@ -379,6 +400,7 @@ onMounted(() => {
       // 时间已用完
       localStorage.removeItem('guestMode')
       localStorage.removeItem('guestStartTime')
+      localStorage.removeItem('guestPausedMs')
     }
   }
 })

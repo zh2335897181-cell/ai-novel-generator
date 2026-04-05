@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
 import routes from './routes/index.js';
 
 // 简单的速率限制实现
@@ -41,6 +42,13 @@ const limiter = new RateLimiter(100, 60000); // 每分钟100个请求
 
 // API密钥认证中间件
 const apiKeyAuth = (req, res, next) => {
+  // 调试日志
+  console.log('[Auth Debug]', req.path, 'Headers:', {
+    'user-id': req.headers['user-id'],
+    'x-guest-mode': req.headers['x-guest-mode'],
+    'authorization': req.headers.authorization ? 'present' : 'missing'
+  });
+  
   // 公开路由列表
   const publicRoutes = ['/auth/register', '/auth/login', '/health'];
   const isPublic = publicRoutes.some(route => req.path.includes(route));
@@ -49,11 +57,27 @@ const apiKeyAuth = (req, res, next) => {
     return next();
   }
   
-  // 简化版：检查用户ID或游客模式
+  // 检查 JWT token（用于 /auth/me 等需要认证的路由）
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    try {
+      const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+      const decoded = jwt.verify(token, JWT_SECRET);
+      req.user = decoded; // 将解码后的用户信息附加到请求对象
+      return next();
+    } catch (error) {
+      console.log('[Auth Debug] Invalid JWT token:', error.message);
+      return res.status(401).json({ message: '无效的token' });
+    }
+  }
+  
+  // 检查用户ID或游客模式（用于其他API路由）
   const userId = req.headers['user-id'];
   const isGuest = req.headers['x-guest-mode'] === 'true';
   
   if (!userId && !isGuest) {
+    console.log('[Auth Debug] 401 - Missing auth headers');
     return res.status(401).json({ message: '未授权，请先登录' });
   }
   

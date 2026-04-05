@@ -1,8 +1,8 @@
 <template>
   <!-- 游客倒计时警告 -->
-  <div v-if="isGuest && remainingMinutes > 0" class="guest-timer-banner">
+  <div v-if="isGuest && remainingMs > 0" class="guest-timer-banner">
     <el-icon><Timer /></el-icon>
-    <span>游客体验剩余 {{ remainingMinutes }} 分钟，登录后解锁无限时长</span>
+    <span>游客体验剩余 {{ formatRemainingTime() }}，登录后解锁无限时长</span>
     <el-button type="primary" size="small" @click="goToLogin">
       立即登录
     </el-button>
@@ -171,18 +171,43 @@ const novelToDelete = ref(null)
 const deleting = ref(false)
 const form = ref({ title: '', loading: false })
 
-// 游客计时相关
-const isGuest = ref(false)
-const remainingMinutes = ref(0)
-let guestTimer = null
-
 const goToLogin = () => {
   router.push('/login')
 }
 
-// 跳转到宣传页面（首页）
 const goToLanding = () => {
   router.push('/')
+}
+
+const handleUserCommand = async (command) => {
+  switch (command) {
+    case 'ai-config':
+      router.push('/ai-config')
+      break
+    case 'guide':
+      showUsageGuide.value = true
+      break
+    case 'logout':
+      await userStore.logout()
+      ElMessage.success('已退出登录')
+      router.push('/login')
+      break
+  }
+}
+
+// 游客计时相关
+const isGuest = ref(false)
+const remainingMs = ref(0)
+let guestTimer = null
+
+// 格式化剩余时间
+const formatRemainingTime = () => {
+  const ms = remainingMs.value
+  const mins = Math.floor(ms / 60000)
+  const secs = Math.floor((ms % 60000) / 1000)
+  const milliseconds = Math.floor((ms % 1000) / 10) // 显示到百分之一秒
+  
+  return `${mins}分${secs}秒${milliseconds.toString().padStart(2, '0')}`
 }
 
 // 检查游客时间限制
@@ -200,25 +225,9 @@ const checkGuestTimer = () => {
     return
   }
   
-  if (result.remainingMinutes !== null) {
+  if (result.remainingMs !== null) {
     isGuest.value = true
-    remainingMinutes.value = result.remainingMinutes
-  }
-}
-
-const handleUserCommand = (command) => {
-  switch (command) {
-    case 'ai-config':
-      router.push('/ai-config')
-      break
-    case 'guide':
-      showUsageGuide.value = true
-      break
-    case 'logout':
-      userStore.logout()
-      ElMessage.success('已退出登录')
-      router.push('/login')
-      break
+    remainingMs.value = result.remainingMs
   }
 }
 
@@ -294,11 +303,11 @@ onMounted(() => {
   // 检查游客时间限制
   checkGuestTimer()
   
-  // 每10秒检查一次游客时间
+  // 每50ms检查一次游客时间，让倒计时更流畅
   if (userStore.isGuest) {
     guestTimer = setInterval(() => {
       checkGuestTimer()
-    }, 10000) // 每10秒检查一次
+    }, 50) // 50ms更新一次
   }
   
   // 检查是否首次访问，显示使用说明

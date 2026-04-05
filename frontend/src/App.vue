@@ -21,8 +21,16 @@ const handleKeyDown = (e) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
+  
   // 恢复登录状态
   userStore.fetchUserInfo()
+  
+  // 恢复游客模式状态
+  const guestMode = localStorage.getItem('guestMode')
+  if (guestMode === 'true') {
+    userStore.setGuestMode(true)
+  }
+  
   // 检查解锁状态
   userStore.checkUnlockStatus()
 })

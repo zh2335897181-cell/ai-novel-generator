@@ -8,7 +8,16 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true
+        changeOrigin: true,
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            // 透传自定义 headers
+            const userId = req.headers['user-id']
+            const guestMode = req.headers['x-guest-mode']
+            if (userId) proxyReq.setHeader('user-id', userId)
+            if (guestMode) proxyReq.setHeader('x-guest-mode', guestMode)
+          })
+        }
       }
     },
     // 添加响应头，放宽 CSP 限制（仅开发环境）

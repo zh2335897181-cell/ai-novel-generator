@@ -13,9 +13,9 @@ export const useUserStore = defineStore('user', () => {
   const unlockIP = ref(null) // 解锁时的IP
   
   // 游客计时暂停相关
-  const isTimerPaused = ref(false) // 计时是否暂停
-  const pauseStartTime = ref(null) // 暂停开始时间
-  const totalPausedMs = ref(0) // 累计暂停时长（毫秒）
+  const isTimerPaused = ref(false)
+  const pauseStartTime = ref(null)
+  const totalPausedMs = ref(parseInt(localStorage.getItem('guestPausedMs') || '0'))
 
   // Getters
   const isLoggedIn = computed(() => !!token.value && !!user.value)
@@ -69,7 +69,18 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  const logout = () => {
+  const logout = async () => {
+    // 如果是游客模式，记录IP锁定
+    if (isGuest.value) {
+      const ip = await getCurrentIP()
+      const lockedIPs = JSON.parse(localStorage.getItem('guestLockedIPs') || '[]')
+      if (!lockedIPs.includes(ip)) {
+        lockedIPs.push(ip)
+        localStorage.setItem('guestLockedIPs', JSON.stringify(lockedIPs))
+        console.log(`[Guest] IP ${ip} 已被锁定，无法再次游客登录`)
+      }
+    }
+    
     token.value = ''
     user.value = null
     isGuest.value = false
@@ -78,43 +89,61 @@ export const useUserStore = defineStore('user', () => {
     unlockIP.value = null
     localStorage.removeItem('token')
     localStorage.removeItem('unlocked')
+    localStorage.removeItem('guestMode')
+    localStorage.removeItem('guestStartTime')
+    localStorage.removeItem('guestPausedMs')
   }
 
   const setGuestMode = (value) => {
     isGuest.value = value
     if (value) {
       user.value = { username: '游客', id: 'guest' }
+      // 设置游客模式标记到 localStorage
+      localStorage.setItem('guestMode', 'true')
+      // 只有在没有开始时间时才设置（首次进入游客模式）
+      const existingStartTime = localStorage.getItem('guestStartTime')
+      if (!existingStartTime) {
+        localStorage.setItem('guestStartTime', Date.now().toString())
+      }
+    } else {
+      localStorage.removeItem('guestMode')
+      localStorage.removeItem('guestStartTime')
+      localStorage.removeItem('guestPausedMs')
     }
   }
 
-  // 检查游客时间限制（10分钟），支持暂停功能
+  // 检查游客时间限制（10分钟）
   const checkGuestTimeLimit = () => {
-    if (!isGuest.value) return { isExpired: false, remainingMinutes: null }
+    if (!isGuest.value) return { isExpired: false, remainingMs: null }
     
     const startTime = parseInt(localStorage.getItem('guestStartTime') || '0')
-    if (!startTime) return { isExpired: false, remainingMinutes: null }
+    if (!startTime) return { isExpired: false, remainingMs: null }
     
-    // 计算实际经过的时间（扣除暂停时间）
-    let elapsedMs = Date.now() - startTime - totalPausedMs.value
+    const now = Date.now()
+    const totalPaused = parseInt(localStorage.getItem('guestPausedMs') || '0')
+    let elapsedMs = now - startTime - totalPaused
     
-    // 如果当前处于暂停状态，再扣除当前暂停的时长
+    // 如果正在暂停，扣除当前暂停时长
     if (isTimerPaused.value && pauseStartTime.value) {
-      elapsedMs -= (Date.now() - pauseStartTime.value)
+      elapsedMs -= (now - pauseStartTime.value)
     }
     
-    const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000))
-    const remainingMinutes = Math.max(0, 10 - elapsedMinutes)
+    // 防呆：elapsedMs 最小为0
+    elapsedMs = Math.max(0, elapsedMs)
     
-    if (elapsedMinutes >= 10) {
-      // 时间已过期，清理游客状态
+    const TIME_LIMIT_MS = 10 * 60 * 1000 // 10分钟
+    const remainingMs = Math.max(0, TIME_LIMIT_MS - elapsedMs)
+    
+    if (remainingMs <= 0) {
       localStorage.removeItem('guestMode')
       localStorage.removeItem('guestStartTime')
+      localStorage.removeItem('guestPausedMs')
       isGuest.value = false
       user.value = null
-      return { isExpired: true, remainingMinutes: 0 }
+      return { isExpired: true, remainingMs: 0 }
     }
     
-    return { isExpired: false, remainingMinutes }
+    return { isExpired: false, remainingMs }
   }
 
   // 暂停游客计时
@@ -130,18 +159,21 @@ export const useUserStore = defineStore('user', () => {
   const resumeGuestTimer = () => {
     if (!isGuest.value || !isTimerPaused.value) return
     
-    // 计算本次暂停的时长并累加
     const pausedDuration = Date.now() - pauseStartTime.value
-    totalPausedMs.value += pausedDuration
+    const newTotal = totalPausedMs.value + pausedDuration
+    totalPausedMs.value = newTotal
+    localStorage.setItem('guestPausedMs', newTotal.toString())
     
     isTimerPaused.value = false
     pauseStartTime.value = null
-    console.log('[GuestTimer] 计时已恢复，累计暂停：', Math.floor(totalPausedMs.value / 1000), '秒')
+    console.log('[GuestTimer] 计时已恢复，累计暂停：', Math.floor(newTotal / 1000), '秒')
   }
   const clearGuestMode = () => {
     localStorage.removeItem('guestMode')
     localStorage.removeItem('guestStartTime')
+    localStorage.removeItem('guestPausedMs')
     isGuest.value = false
+    totalPausedMs.value = 0
     if (!isLoggedIn.value) {
       user.value = null
     }
@@ -182,7 +214,7 @@ export const useUserStore = defineStore('user', () => {
     })
   }
 
-  // 检查解锁状态是否过期
+// 检查解锁状态是否过期
   const checkUnlockStatus = () => {
     if (!isUnlocked.value) return
     
@@ -198,6 +230,13 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.warning('解锁状态已过期，请重新解锁')
       }
     }
+  }
+
+  // 检查IP是否被游客模式锁定
+  const checkGuestIPLock = async () => {
+    const ip = await getCurrentIP()
+    const lockedIPs = JSON.parse(localStorage.getItem('guestLockedIPs') || '[]')
+    return lockedIPs.includes(ip)
   }
 
   const fetchUserInfo = async () => {
@@ -236,6 +275,7 @@ export const useUserStore = defineStore('user', () => {
     unlockWithShortcut,
     checkUnlockStatus,
     checkGuestTimeLimit,
+    checkGuestIPLock,
     clearGuestMode,
     pauseGuestTimer,
     resumeGuestTimer,

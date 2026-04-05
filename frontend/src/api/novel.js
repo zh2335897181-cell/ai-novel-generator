@@ -1,13 +1,16 @@
 const BASE = '/api'
 
-// 获取请求头，游客模式添加标记
+// 获取请求头，游客模式添加标记，登录用户添加token
 const getHeaders = (extraHeaders = {}) => {
   const isGuest = localStorage.getItem('guestMode') === 'true'
+  const token = localStorage.getItem('token')
   const headers = { ...extraHeaders }
   
   if (isGuest) {
     headers['x-guest-mode'] = 'true'
     headers['user-id'] = '1'
+  } else if (token) {
+    headers['Authorization'] = `Bearer ${token}`
   }
   
   return headers
@@ -214,7 +217,7 @@ export default {
   // 获取用户信息
   async getUserInfo() {
     const response = await fetch(`${BASE}/auth/me`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: getHeaders()
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.message)
