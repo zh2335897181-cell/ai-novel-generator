@@ -104,5 +104,24 @@ CREATE TABLE `location_state` (
     UNIQUE KEY uk_novel_name (`novel_id`, `name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='地点状态表';
 
+-- 9️⃣ 时间线事件表（新增）
+CREATE TABLE `timeline_events` (
+    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+    `novel_id` BIGINT NOT NULL COMMENT '小说ID',
+    `title` VARCHAR(255) NOT NULL COMMENT '事件标题',
+    `event_date` DATETIME COMMENT '事件发生的日期时间',
+    `type` VARCHAR(50) DEFAULT 'event' COMMENT '事件类型：chapter/character/event/battle/turning/daily',
+    `description` TEXT COMMENT '事件描述',
+    `importance` INT DEFAULT 3 COMMENT '重要性：1-5',
+    `related_characters` JSON COMMENT '关联角色ID列表',
+    `related_chapter` INT COMMENT '关联章节编号',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`novel_id`) REFERENCES `novel`(`id`) ON DELETE CASCADE,
+    INDEX idx_novel_id (`novel_id`),
+    INDEX idx_event_date (`event_date`),
+    INDEX idx_type (`type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='时间线事件表';
+
 -- 插入测试数据
 INSERT INTO `user` (`username`, `password`) VALUES ('test', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH');

@@ -1150,28 +1150,48 @@ const onRelationsUpdate = (newRelations) => {
   characterRelations.value = newRelations
 }
 
-// 时间线事件操作
-const saveTimelineEvent = (event) => {
-  const index = timelineEvents.value.findIndex(e => e.id === event.id)
-  if (index > -1) {
-    timelineEvents.value[index] = event
-  } else {
-    timelineEvents.value.push(event)
+// 时间线事件操作 - 使用后端API
+const saveTimelineEvent = async (event) => {
+  try {
+    if (event.id && typeof event.id === 'number') {
+      // 更新已有事件
+      const res = await api.updateTimelineEvent(event.id, event)
+      const index = timelineEvents.value.findIndex(e => e.id === event.id)
+      if (index > -1) {
+        timelineEvents.value[index] = res.data
+      }
+      ElMessage.success('事件已更新')
+    } else {
+      // 创建新事件
+      const res = await api.createTimelineEvent(novelId.value, event)
+      timelineEvents.value.push(res.data)
+      ElMessage.success('事件已创建')
+    }
+  } catch (error) {
+    console.error('保存时间线事件失败:', error)
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
   }
-  // 保存到本地存储
-  localStorage.setItem(`timeline-${novelId.value}`, JSON.stringify(timelineEvents.value))
 }
 
-const deleteTimelineEvent = (eventId) => {
-  timelineEvents.value = timelineEvents.value.filter(e => e.id !== eventId)
-  localStorage.setItem(`timeline-${novelId.value}`, JSON.stringify(timelineEvents.value))
+const deleteTimelineEvent = async (eventId) => {
+  try {
+    await api.deleteTimelineEvent(eventId)
+    timelineEvents.value = timelineEvents.value.filter(e => e.id !== eventId)
+    ElMessage.success('事件已删除')
+  } catch (error) {
+    console.error('删除时间线事件失败:', error)
+    ElMessage.error('删除失败: ' + (error.message || '未知错误'))
+  }
 }
 
-// 加载时间线事件
-const loadTimelineEvents = () => {
-  const saved = localStorage.getItem(`timeline-${novelId.value}`)
-  if (saved) {
-    timelineEvents.value = JSON.parse(saved)
+// 加载时间线事件 - 从后端API获取
+const loadTimelineEvents = async () => {
+  try {
+    const res = await api.getTimelineEvents(novelId.value)
+    timelineEvents.value = res.data || []
+  } catch (error) {
+    console.error('加载时间线事件失败:', error)
+    // 静默失败，不打扰用户
   }
 }
 

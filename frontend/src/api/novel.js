@@ -233,5 +233,52 @@ export default {
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || '删除失败')
     return data
+  },
+
+  // ==================== 时间线管理 API ====================
+
+  // 获取时间线事件列表
+  async getTimelineEvents(novelId) {
+    const response = await fetch(`${BASE}/novels/${novelId}/timeline`, {
+      headers: getHeaders()
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || '获取时间线事件失败')
+    return data
+  },
+
+  // 创建时间线事件
+  async createTimelineEvent(novelId, eventData) {
+    const response = await fetch(`${BASE}/novels/${novelId}/timeline`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(eventData)
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || '创建时间线事件失败')
+    return data
+  },
+
+  // 更新时间线事件
+  async updateTimelineEvent(eventId, eventData) {
+    const response = await fetch(`${BASE}/timeline/${eventId}`, {
+      method: 'PUT',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(eventData)
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || '更新时间线事件失败')
+    return data
+  },
+
+  // 删除时间线事件
+  async deleteTimelineEvent(eventId) {
+    const response = await fetch(`${BASE}/timeline/${eventId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || '删除时间线事件失败')
+    return data
   }
 }

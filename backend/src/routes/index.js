@@ -1,6 +1,7 @@
 import express from 'express';
 import novelController from '../controllers/novelController.js';
 import authController from '../controllers/authController.js';
+import timelineController from '../controllers/timelineController.js';
 import { runValidationTests, runAllTests } from '../utils/testRunner.js';
 
 const router = express.Router();
@@ -159,5 +160,11 @@ router.post('/ai/chat-stream', async (req, res) => {
     res.end()
   }
 })
+
+// 时间线相关路由
+router.get('/novels/:novelId/timeline', timelineController.getTimelineEvents);
+router.post('/novels/:novelId/timeline', timelineController.createTimelineEvent);
+router.put('/timeline/:eventId', timelineController.updateTimelineEvent);
+router.delete('/timeline/:eventId', timelineController.deleteTimelineEvent);
 
 export default router;

@@ -107,8 +107,8 @@ class AIClient {
   }
 
   // 生成小说内容（流式）；ragContext 为检索增强片段，可为空
-  async generateStoryStream(worldState, characters, summary, userInput, config, items, locations, minorCharacters, wordCount, onChunk, ragContext = '', previousChapterContent = '') {
-    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, items, locations, minorCharacters, wordCount, ragContext, previousChapterContent);
+  async generateStoryStream(worldState, characters, summary, userInput, config, items, locations, minorCharacters, wordCount, onChunk, ragContext = '', previousChapterContent = '', timelineEvents = []) {
+    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, items, locations, minorCharacters, wordCount, ragContext, previousChapterContent, timelineEvents);
     return await this.chatStream([{ role: 'user', content: prompt }], 0.8, config, onChunk);
   }
 
@@ -184,7 +184,7 @@ class AIClient {
   }
 
   // 构建小说生成Prompt
-  buildStoryPrompt(worldState, characters, summary, userInput, items = [], locations = [], minorCharacters = [], wordCount = 800, ragContext = '', previousChapterContent = '') {
+  buildStoryPrompt(worldState, characters, summary, userInput, items = [], locations = [], minorCharacters = [], wordCount = 800, ragContext = '', previousChapterContent = '', timelineEvents = []) {
     const characterList = characters.map(c => {
       let attrs = {};
       try {
@@ -229,6 +229,15 @@ class AIClient {
     const closedLocations = locations.filter(l => l.status === '封闭' || l.status === '毁灭').map(l => l.name);
     const lostItems = items.filter(i => i.status === '丢失' || i.status === '损毁').map(i => i.name);
 
+    // 构建时间线上下文
+    const timelineContext = timelineEvents && timelineEvents.length > 0
+      ? timelineEvents.map(e => {
+          const dateStr = e.event_date ? new Date(e.event_date).toLocaleDateString() : '时间未定';
+          const chapterStr = e.related_chapter ? `(第${e.related_chapter}章)` : '';
+          return `- ${dateStr} ${chapterStr} 【${e.type}】${e.title}: ${e.description || '无描述'}`;
+        }).join('\n')
+      : '暂无时间线事件';
+
     return `你是一个专业的小说续写AI，严格根据给定的世界状态续写小说。
 
 ## 【绝对禁止 - 违反将导致严重后果】 ##
@@ -237,6 +246,10 @@ class AIClient {
 🚫 已封闭/毁灭的地点不能使用：${closedLocations.length > 0 ? closedLocations.join('、') : '无'}
 🚫 禁止创造新角色（主角除外）
 🚫 禁止改变任何角色的等级或境界
+
+## 【故事时间线（来自timeline_events表）】 ##
+${timelineContext}
+⚠️ 重要：续写必须严格遵循上述时间线顺序，确保剧情连贯性
 
 ## 【上一章结尾回顾】 ##
 ${previousChapterContent ? `上一章最后500字内容（必须严格承接）：
@@ -282,11 +295,12 @@ ${userInput}
 4. 📌 **情节推进**：基于上一章的发展自然推进，解决或延续悬念
 5. 📌 **氛围延续**：保持与上一章一致的情感基调和叙事节奏
 6. 📌 **对话连贯**：如果上一章有未完成的对话或事件，需要自然收尾或延续
-7. 只使用"存活角色"列表中的角色
-8. 物品必须从"可用物品"中选择，持有者必须正确
-9. 地点必须从"可用地点"中选择
-10. 必须遵循世界规则
-11. 只输出小说正文，不要输出任何JSON或说明
+7. 📌 **时间线遵循**：续写内容必须符合上述时间线事件顺序，不能颠倒或跳过重要事件
+8. 只使用"存活角色"列表中的角色
+9. 物品必须从"可用物品"中选择，持有者必须正确
+10. 地点必须从"可用地点"中选择
+11. 必须遵循世界规则
+12. 只输出小说正文，不要输出任何JSON或说明
 
 ## 【写作前准备】 ##
 在开始续写之前，请先确认：
@@ -294,8 +308,10 @@ ${userInput}
 - 本章将使用哪些角色？（从存活列表选择2-4个）
 - 本章将使用哪些物品？（从可用列表选择相关物品）
 - 本章将发生在哪个地点？
+- 本章在时间线中的位置？（参考时间线事件）
 - 本章的核心事件是什么？
 - 如何承接上一章的悬念或冲突？
+- 本章节与前后时间线事件的关系？
 
 现在开始续写（${wordCount}字）：`;
   }

@@ -490,6 +490,12 @@ class NovelService {
           }
         }
 
+        // 查询时间线事件用于AI生成
+        const [timelineEvents] = await conn.query(
+          'SELECT * FROM timeline_events WHERE novel_id = ? ORDER BY event_date ASC, created_at ASC',
+          [novelId]
+        );
+
         flow.completePhase(FlowPhase.QUERY_STATE, {
           worldState: worldState[0],
           characterCount: characters.length,
@@ -565,7 +571,8 @@ class NovelService {
             })}\n\n`);
           },
           ragContext,
-          previousChapterContent // 传递上一章内容
+          previousChapterContent,
+          timelineEvents // 传递时间线事件给AI
         );
 
         flow.completePhase(FlowPhase.GENERATE_CONTENT, {
