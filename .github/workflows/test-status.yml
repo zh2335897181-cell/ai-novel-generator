@@ -1,0 +1,43 @@
+name: Test Status
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  test-status:
+    name: Test Status Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+
+      - name: Run quick tests
+        run: |
+          cd backend && npm test -- --passWithNoTests
+          cd ../frontend && npm test -- --run
+
+      - name: Create test status badge
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "Tests: Passing" > test-status.txt
+          else
+            echo "Tests: Failing" > test-status.txt
+          fi

@@ -420,6 +420,41 @@
                 </div>
               </el-menu-item-group>
             </el-sub-menu>
+
+            <!-- 时间线管理菜单 -->
+            <el-sub-menu index="timeline">
+              <template #title>
+                <el-icon><Calendar /></el-icon>
+                <span>时间线管理</span>
+                <el-tag size="small" type="warning" class="menu-tag">新增</el-tag>
+              </template>
+              <el-menu-item-group>
+                <div class="timeline-content">
+                  <el-alert
+                    title="故事时间轴"
+                    type="info"
+                    :closable="false"
+                    style="margin-bottom: 12px;"
+                  >
+                    管理小说中的章节时间线、角色登场事件、重要剧情节点
+                  </el-alert>
+                  <div class="timeline-stats">
+                    <div class="stat-item">
+                      <span class="stat-label">事件数：</span>
+                      <span class="stat-value">{{ timelineEvents.length }}</span>
+                    </div>
+                  </div>
+                  <el-button 
+                    type="primary" 
+                    size="small" 
+                    @click="showTimeline = true"
+                    style="width: 100%; margin-top: 12px;"
+                  >
+                    <el-icon><Calendar /></el-icon> 打开时间线管理
+                  </el-button>
+                </div>
+              </el-menu-item-group>
+            </el-sub-menu>
           </el-menu>
 
           <!-- 当前剧情详情面板 -->
@@ -814,7 +849,7 @@
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download } from '@element-plus/icons-vue'
+import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
 import { Document as DocxDocument, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } from 'docx'

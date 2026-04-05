@@ -251,6 +251,33 @@ ai-novel-generator/
 - ❌ 无状态：AI可能让死人复活
 - ✅ 状态管理：死亡状态写入数据库，强约束
 
+## 测试
+
+本项目包含完整的测试套件，包括单元测试、集成测试和E2E测试。
+
+### 快速开始
+
+```bash
+# 安装测试依赖
+./install-test-deps.bat  # Windows
+./install-test-deps.sh   # Linux/Mac
+
+# 运行所有测试
+./test-all.bat          # Windows
+./test-all.sh           # Linux/Mac
+```
+
+### 测试类型
+
+- **后端单元测试**: Jest + Supertest
+- **前端单元测试**: Vitest + Vue Test Utils
+- **E2E测试**: Playwright
+- **CI/CD**: GitHub Actions
+
+### 详细文档
+
+查看 [测试文档](./docs/TESTING.md) 了解更多信息。
+
 ## 扩展建议
 
 1. 添加用户认证（JWT）

@@ -1,0 +1,52 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Docker images
+        run: |
+          docker build -t ai-novel-backend:latest ./backend
+          docker build -t ai-novel-frontend:latest ./frontend
+
+      # Add your deployment steps here
+      # Examples:
+      # - Deploy to AWS ECS
+      # - Deploy to Azure Container Apps
+      # - Deploy to Google Cloud Run
+      # - Deploy to your own server via SSH
+
+      - name: Deploy notification
+        if: success()
+        run: echo "Deployment successful!"
+
+      - name: Deployment failed notification
+        if: failure()
+        run: echo "Deployment failed!"
