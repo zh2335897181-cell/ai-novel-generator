@@ -1,6 +1,46 @@
 <template>
-  <div v-loading="loading" element-loading-text="加载中..." class="novel-detail">
-    <!-- 游客限制提示 -->
+  <div class="novel-detail">
+    <!-- 骨架屏加载状态 -->
+    <div v-if="loading" class="skeleton-container">
+      <el-container>
+        <el-aside width="380px">
+          <div class="sidebar skeleton-sidebar">
+            <!-- Logo骨架 -->
+            <div class="skeleton-logo">
+              <el-skeleton-item variant="circle" style="width: 44px; height: 44px;" />
+              <el-skeleton-item variant="text" style="width: 120px; margin-left: 12px;" />
+            </div>
+            <!-- 标题骨架 -->
+            <el-skeleton-item variant="h3" style="width: 80%; margin: 20px 0;" />
+            <!-- 菜单骨架 -->
+            <div class="skeleton-menu">
+              <el-skeleton-item variant="text" style="width: 100%; height: 40px; margin-bottom: 12px;" />
+              <el-skeleton-item variant="text" style="width: 100%; height: 40px; margin-bottom: 12px;" />
+              <el-skeleton-item variant="text" style="width: 100%; height: 40px; margin-bottom: 12px;" />
+              <el-skeleton-item variant="text" style="width: 100%; height: 40px; margin-bottom: 12px;" />
+              <el-skeleton-item variant="text" style="width: 100%; height: 40px; margin-bottom: 12px;" />
+            </div>
+          </div>
+        </el-aside>
+        <el-main>
+          <div class="skeleton-main">
+            <!-- 生成区域骨架 -->
+            <el-skeleton :rows="3" animated />
+            <div style="margin-top: 24px;">
+              <el-skeleton-item variant="button" style="width: 100%; height: 48px;" />
+            </div>
+            <!-- 内容区域骨架 -->
+            <div style="margin-top: 32px;">
+              <el-skeleton :rows="6" animated />
+            </div>
+          </div>
+        </el-main>
+      </el-container>
+    </div>
+
+    <!-- 实际内容 -->
+    <div v-else>
+      <!-- 游客限制提示 -->
     <div v-if="userStore.isRestricted" class="guest-restriction-banner">
       <div class="restriction-content">
         <el-icon :size="20"><Lock /></el-icon>
@@ -76,12 +116,16 @@
                     </el-tag>
                   </div>
                   <div class="menu-actions">
-                    <el-button text type="primary" @click="showOutlineDialog = true" size="small">
-                      <el-icon><MagicStick /></el-icon>AI拆解
-                    </el-button>
-                    <el-button text @click="showWorldDialog = true" size="small">
-                      <el-icon><Edit /></el-icon>编辑
-                    </el-button>
+                    <el-tooltip content="使用AI智能分析并拆解大纲结构" placement="top">
+                      <el-button text type="primary" @click="showOutlineDialog = true" size="small">
+                        <el-icon><MagicStick /></el-icon>AI拆解
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="手动编辑世界设定、规则、背景等" placement="top">
+                      <el-button text @click="showWorldDialog = true" size="small">
+                        <el-icon><Edit /></el-icon>编辑
+                      </el-button>
+                    </el-tooltip>
                   </div>
                 </div>
               </el-menu-item>
@@ -246,9 +290,11 @@
                   </div>
                   <div class="inspiration-section">
                     <h4>🎲 随机灵感</h4>
-                    <el-button type="primary" size="small" @click="generateRandomInspiration" :loading="generatingInspiration">
-                      <el-icon><MagicStick /></el-icon> 生成随机灵感
-                    </el-button>
+                    <el-tooltip content="AI随机生成剧情灵感片段" placement="top">
+                      <el-button type="primary" size="small" @click="generateRandomInspiration" :loading="generatingInspiration">
+                        <el-icon><MagicStick /></el-icon> 生成随机灵感
+                      </el-button>
+                    </el-tooltip>
                     <div v-if="randomInspiration" class="random-inspiration">
                       {{ randomInspiration }}
                     </div>
@@ -298,15 +344,21 @@
                     </div>
                   </div>
                   <div class="export-actions">
-                    <el-button type="primary" size="small" @click="exportNovel('txt')">
-                      <el-icon><Document /></el-icon> 导出 TXT
-                    </el-button>
-                    <el-button type="success" size="small" @click="exportNovel('md')">
-                      <el-icon><Document /></el-icon> 导出 Markdown
-                    </el-button>
-                    <el-button type="warning" size="small" @click="exportNovel('html')">
-                      <el-icon><Document /></el-icon> 导出 HTML
-                    </el-button>
+                    <el-tooltip content="导出为纯文本格式" placement="top">
+                      <el-button type="primary" size="small" @click="exportNovel('txt')">
+                        <el-icon><Document /></el-icon> 导出 TXT
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="导出为Markdown格式，支持排版" placement="top">
+                      <el-button type="success" size="small" @click="exportNovel('md')">
+                        <el-icon><Document /></el-icon> 导出 Markdown
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="导出为HTML网页格式" placement="top">
+                      <el-button type="warning" size="small" @click="exportNovel('html')">
+                        <el-icon><Document /></el-icon> 导出 HTML
+                      </el-button>
+                    </el-tooltip>
                   </div>
                 </div>
               </el-menu-item-group>
@@ -373,17 +425,19 @@
                     :rows="3"
                     placeholder="输入剧情指令，例如：让主角遇到一个神秘商人..."
                   />
-                  <el-button 
-                    class="ai-suggest-btn"
-                    type="primary" 
-                    text
-                    @click="getAIPlotSuggestion"
-                    :loading="gettingSuggestion"
-                    size="small"
-                  >
-                    <el-icon><MagicStick /></el-icon>
-                    AI建议
-                  </el-button>
+                  <el-tooltip content="AI智能分析当前剧情，生成续写建议" placement="left">
+                    <el-button 
+                      class="ai-suggest-btn"
+                      type="primary" 
+                      text
+                      @click="getAIPlotSuggestion"
+                      :loading="gettingSuggestion"
+                      size="small"
+                    >
+                      <el-icon><MagicStick /></el-icon>
+                      AI建议
+                    </el-button>
+                  </el-tooltip>
                 </div>
                 <!-- AI建议下拉面板 -->
                 <div v-if="showSuggestions && plotSuggestions.length > 0" class="suggestions-panel">
@@ -417,15 +471,17 @@
               </el-form-item>
             </el-form>
             
-            <el-button 
-              type="primary" 
-              @click="generateStoryStream" 
-              :loading="generating"
-              style="width: 100%;"
-            >
-              <el-icon><MagicStick /></el-icon>
-              {{ generating ? '生成中...' : '开始生成' }}
-            </el-button>
+            <el-tooltip content="根据剧情指令AI生成下一章内容" placement="bottom">
+              <el-button 
+                type="primary" 
+                @click="generateStoryStream" 
+                :loading="generating"
+                style="width: 100%;"
+              >
+                <el-icon><MagicStick /></el-icon>
+                {{ generating ? '生成中...' : '开始生成' }}
+              </el-button>
+            </el-tooltip>
 
             <!-- 流式输出区域 -->
             <div v-if="streamingContent" class="streaming-content">
@@ -663,6 +719,7 @@
       :contents="contents"
       :world-state="worldState"
     />
+    </div>
   </div>
 </template>
 
@@ -2924,5 +2981,33 @@ watch(() => route.params.id, (newId, oldId) => {
     border-top: 1px solid #e5e7eb;
     max-height: 350px;
   }
+}
+
+/* 骨架屏样式 */
+.skeleton-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.skeleton-sidebar {
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.skeleton-logo {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.skeleton-menu {
+  margin-top: 16px;
+}
+
+.skeleton-main {
+  padding: 32px;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 </style>

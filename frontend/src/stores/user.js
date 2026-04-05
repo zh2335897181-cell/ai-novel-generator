@@ -51,6 +51,15 @@ export const useUserStore = defineStore('user', () => {
       localStorage.setItem('token', res.token)
       isGuest.value = false
       isUnlocked.value = false
+      
+      // 检查是否有游客数据需要导入
+      const guestNovels = getGuestNovels()
+      if (guestNovels.length > 0) {
+        // 保存到返回值中，让调用方处理导入提示
+        res.hasGuestData = true
+        res.guestNovelCount = guestNovels.length
+      }
+      
       // 清除游客模式标记
       localStorage.removeItem('guestMode')
       localStorage.removeItem('guestStartTime')
@@ -255,6 +264,73 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // 保存游客小说到本地存储
+  const saveGuestNovel = (novelData) => {
+    const guestNovels = getGuestNovels()
+    const novelWithTimestamp = {
+      ...novelData,
+      guestCreatedAt: Date.now(),
+      isGuestData: true
+    }
+    guestNovels.push(novelWithTimestamp)
+    localStorage.setItem('guestNovels', JSON.stringify(guestNovels))
+    console.log('[Guest] 小说已保存到本地:', novelData.title)
+    return novelWithTimestamp
+  }
+
+  // 获取所有游客小说
+  const getGuestNovels = () => {
+    try {
+      return JSON.parse(localStorage.getItem('guestNovels') || '[]')
+    } catch {
+      return []
+    }
+  }
+
+  // 导入游客数据到登录账号
+  const importGuestData = async () => {
+    const guestNovels = getGuestNovels()
+    if (guestNovels.length === 0) {
+      return { success: false, message: '没有可导入的游客数据' }
+    }
+    
+    let importedCount = 0
+    let failedCount = 0
+    
+    for (const novel of guestNovels) {
+      try {
+        // 调用API导入小说
+        await api.importNovel({
+          title: novel.title,
+          content: novel.content,
+          worldState: novel.worldState,
+          characters: novel.characters,
+          createdAt: novel.guestCreatedAt
+        })
+        importedCount++
+      } catch (error) {
+        console.error('[Guest] 导入小说失败:', novel.title, error)
+        failedCount++
+      }
+    }
+    
+    // 清空游客数据
+    localStorage.removeItem('guestNovels')
+    
+    return {
+      success: true,
+      importedCount,
+      failedCount,
+      message: `成功导入 ${importedCount} 本小说${failedCount > 0 ? `，${failedCount} 本失败` : ''}`
+    }
+  }
+
+  // 清除游客数据（不导入）
+  const clearGuestData = () => {
+    localStorage.removeItem('guestNovels')
+    console.log('[Guest] 游客数据已清除')
+  }
+
   return {
     user,
     isGuest,
@@ -279,6 +355,10 @@ export const useUserStore = defineStore('user', () => {
     clearGuestMode,
     pauseGuestTimer,
     resumeGuestTimer,
-    getCurrentIP
+    getCurrentIP,
+    saveGuestNovel,
+    getGuestNovels,
+    importGuestData,
+    clearGuestData
   }
 })

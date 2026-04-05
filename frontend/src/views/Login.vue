@@ -181,8 +181,37 @@ const handleSubmit = async () => {
         form.password = ''
         form.confirmPassword = ''
       } else {
-        await userStore.login(form.username, form.password)
+        const res = await userStore.login(form.username, form.password)
         ElMessage.success('登录成功')
+        
+        // 检查是否有游客数据需要导入
+        if (res.hasGuestData && res.guestNovelCount > 0) {
+          const importResult = await ElMessageBox.confirm(
+            `检测到 ${res.guestNovelCount} 本游客模式下创建的小说，是否导入到当前账号？`,
+            '导入游客数据',
+            {
+              confirmButtonText: '立即导入',
+              cancelButtonText: '放弃数据',
+              type: 'info',
+              closeOnClickModal: false
+            }
+          ).catch(() => 'cancel')
+          
+          if (importResult === 'confirm') {
+            // 执行导入
+            const result = await userStore.importGuestData()
+            if (result.success) {
+              ElMessage.success(result.message)
+            } else {
+              ElMessage.warning(result.message)
+            }
+          } else {
+            // 用户选择放弃，清除游客数据
+            userStore.clearGuestData()
+            ElMessage.info('游客数据已清除')
+          }
+        }
+        
         router.push('/novels')
       }
     } catch (error) {
