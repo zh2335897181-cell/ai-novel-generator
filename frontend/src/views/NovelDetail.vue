@@ -359,6 +359,26 @@
                         <el-icon><Document /></el-icon> 导出 HTML
                       </el-button>
                     </el-tooltip>
+                    <el-tooltip content="导出为EPUB电子书格式" placement="top">
+                      <el-button type="info" size="small" @click="exportNovel('epub')">
+                        <el-icon><Reading /></el-icon> 导出 EPUB
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="导出为PDF文档，带封面和目录" placement="top">
+                      <el-button color="#e74c3c" size="small" @click="exportNovel('pdf')">
+                        <el-icon><Document /></el-icon> 导出 PDF
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="导出为Word文档格式" placement="top">
+                      <el-button color="#2b579a" size="small" @click="exportNovel('docx')">
+                        <el-icon><Document /></el-icon> 导出 Word
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip content="生成精美分享海报" placement="top">
+                      <el-button color="#9b59b6" size="small" @click="showPosterDialog = true">
+                        <el-icon><TrendCharts /></el-icon> 生成海报
+                      </el-button>
+                    </el-tooltip>
                   </div>
                 </div>
               </el-menu-item-group>
@@ -493,33 +513,42 @@
             </div>
           </div>
 
-          <!-- 内容展示 -->
+          <!-- 内容展示 - 虚拟滚动 -->
           <div class="story-list">
-            <el-card v-for="(content, index) in contents" :key="content.id" class="story-card">
-              <div class="story-header">
-                <div class="story-title-section">
-                  <span class="chapter-badge">第 {{ content.chapter_number || (contents.length - index) }} 章</span>
-                  <span v-if="content.chapter_title" class="chapter-title-text">{{ content.chapter_title }}</span>
+            <RecycleScroller
+              v-if="contents.length > 0"
+              class="scroller"
+              :items="contents"
+              :item-size="200"
+              key-field="id"
+              v-slot="{ item: content, index }"
+            >
+              <el-card class="story-card">
+                <div class="story-header">
+                  <div class="story-title-section">
+                    <span class="chapter-badge">第 {{ content.chapter_number || (contents.length - index) }} 章</span>
+                    <span v-if="content.chapter_title" class="chapter-title-text">{{ content.chapter_title }}</span>
+                  </div>
+                  <span class="story-time">{{ formatDate(content.created_at) }}</span>
                 </div>
-                <span class="story-time">{{ formatDate(content.created_at) }}</span>
-              </div>
-              
-              <!-- 章节大纲（新增） -->
-              <div v-if="content.chapter_outline" class="chapter-outline-box">
-                <el-icon><Document /></el-icon>
-                <span class="outline-label">大纲：</span>
-                <span class="outline-text">{{ content.chapter_outline }}</span>
-              </div>
-              
-              <div class="story-content">{{ content.content }}</div>
-              
-              <!-- 字数统计 -->
-              <div v-if="content.word_count" class="word-count-info">
-                <el-icon><Reading /></el-icon>
-                <span>{{ content.word_count }} 字</span>
-              </div>
-            </el-card>
-            <el-empty v-if="contents.length === 0" description="还没有内容，开始生成吧！" />
+                
+                <!-- 章节大纲 -->
+                <div v-if="content.chapter_outline" class="chapter-outline-box">
+                  <el-icon><Document /></el-icon>
+                  <span class="outline-label">大纲：</span>
+                  <span class="outline-text">{{ content.chapter_outline }}</span>
+                </div>
+                
+                <div class="story-content">{{ content.content }}</div>
+                
+                <!-- 字数统计 -->
+                <div v-if="content.word_count" class="word-count-info">
+                  <el-icon><Reading /></el-icon>
+                  <span>{{ content.word_count }} 字</span>
+                </div>
+              </el-card>
+            </RecycleScroller>
+            <el-empty v-else description="还没有内容，开始生成吧！" />
           </div>
         </div>
       </el-main>
@@ -711,6 +740,54 @@
       </template>
     </el-dialog>
 
+    <!-- 分享海报对话框 -->
+    <el-dialog
+      v-model="showPosterDialog"
+      title="分享海报"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="generatingPoster" class="poster-generating">
+        <el-icon class="is-loading" :size="48"><Loading /></el-icon>
+        <p>正在生成海报...</p>
+      </div>
+      <div v-else class="poster-preview">
+        <div ref="posterContainer" class="poster-container">
+          <div class="poster-bg">
+            <div class="poster-header">
+              <div class="poster-icon">📚</div>
+              <div class="poster-title">{{ novel?.title || '未命名小说' }}</div>
+            </div>
+            <div class="poster-stats">
+              <div class="poster-stat-item">
+                <div class="poster-stat-value">{{ contents.length }}</div>
+                <div class="poster-stat-label">章节</div>
+              </div>
+              <div class="poster-stat-item">
+                <div class="poster-stat-value">{{ totalWordCount }}</div>
+                <div class="poster-stat-label">字数</div>
+              </div>
+              <div class="poster-stat-item">
+                <div class="poster-stat-value">{{ characters.length }}</div>
+                <div class="poster-stat-label">角色</div>
+              </div>
+            </div>
+            <div class="poster-footer">
+              <div class="poster-logo">AI小说生成系统</div>
+              <div class="poster-slogan">让AI帮你创作精彩故事</div>
+            </div>
+            <div class="poster-decoration"></div>
+          </div>
+        </div>
+        <div class="poster-actions">
+          <el-button type="primary" @click="downloadPoster" :loading="generatingPoster">
+            <el-icon><Download /></el-icon> 下载海报
+          </el-button>
+          <el-button @click="showPosterDialog = false">关闭</el-button>
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- 主角成长曲线对话框（新增） -->
     <CharacterGrowthChart
       v-model="showGrowthChart"
@@ -718,6 +795,16 @@
       :main-characters="characters"
       :contents="contents"
       :world-state="worldState"
+    />
+
+    <!-- 时间线管理对话框 -->
+    <TimelineManager
+      v-model="showTimeline"
+      :contents="contents"
+      :characters="characters"
+      :events="timelineEvents"
+      @save="saveTimelineEvent"
+      @delete="deleteTimelineEvent"
     />
     </div>
   </div>
@@ -728,14 +815,22 @@ import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download } from '@element-plus/icons-vue'
+import { saveAs } from 'file-saver'
+import { jsPDF } from 'jspdf'
+import { Document as DocxDocument, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } from 'docx'
+import { RecycleScroller } from 'vue-virtual-scroller'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import api from '../api/novel'
 import { useAIConfigStore } from '../stores/aiConfig'
 import CharacterGrowthChart from '../components/CharacterGrowthChart.vue'
 import RelationshipVisualization from '../components/RelationshipVisualization.vue'
 import { useUserStore } from '../stores/user'
+import { useNovelWorker } from '../composables/useNovelWorker'
+import TimelineManager from '../components/TimelineManager.vue'
 
 const aiConfigStore = useAIConfigStore()
 const userStore = useUserStore()
+const { isProcessing: workerProcessing, result: workerResult, analyzeText, calculateStats } = useNovelWorker()
 const route = useRoute()
 const router = useRouter()
 
@@ -805,6 +900,15 @@ const relationAnalyzing = ref(false)
 const graphChart = ref(null)
 let chartInstance = null
 const characterRelations = ref([])
+
+// 分享海报相关
+const showPosterDialog = ref(false)
+const generatingPoster = ref(false)
+const posterContainer = ref(null)
+
+// 时间线管理相关
+const showTimeline = ref(false)
+const timelineEvents = ref([])
 
 // 头像颜色映射
 const avatarColors = [
@@ -976,9 +1080,64 @@ const exportRelations = () => {
   ElMessage.success('关系数据已导出')
 }
 
+// 下载分享海报
+const downloadPoster = async () => {
+  if (!posterContainer.value) return
+  
+  generatingPoster.value = true
+  try {
+    const html2canvas = (await import('html2canvas')).default
+    const canvas = await html2canvas(posterContainer.value, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: null
+    })
+    
+    const link = document.createElement('a')
+    link.download = `${novel.value?.title || '小说'}_分享海报.png`
+    link.href = canvas.toDataURL('image/png')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    ElMessage.success('海报已下载')
+  } catch (error) {
+    console.error('生成海报失败:', error)
+    ElMessage.error('生成海报失败')
+  } finally {
+    generatingPoster.value = false
+  }
+}
+
 // 处理关系更新
 const onRelationsUpdate = (newRelations) => {
   characterRelations.value = newRelations
+}
+
+// 时间线事件操作
+const saveTimelineEvent = (event) => {
+  const index = timelineEvents.value.findIndex(e => e.id === event.id)
+  if (index > -1) {
+    timelineEvents.value[index] = event
+  } else {
+    timelineEvents.value.push(event)
+  }
+  // 保存到本地存储
+  localStorage.setItem(`timeline-${novelId.value}`, JSON.stringify(timelineEvents.value))
+}
+
+const deleteTimelineEvent = (eventId) => {
+  timelineEvents.value = timelineEvents.value.filter(e => e.id !== eventId)
+  localStorage.setItem(`timeline-${novelId.value}`, JSON.stringify(timelineEvents.value))
+}
+
+// 加载时间线事件
+const loadTimelineEvents = () => {
+  const saved = localStorage.getItem(`timeline-${novelId.value}`)
+  if (saved) {
+    timelineEvents.value = JSON.parse(saved)
+  }
 }
 
 // 导出相关
@@ -1045,6 +1204,9 @@ const loadDetail = async () => {
 
     // 加载章节大纲
     loadChapterOutlines()
+    
+    // 加载时间线事件
+    loadTimelineEvents()
   } catch (error) {
     ElMessage.error('加载失败')
   } finally {
@@ -1369,44 +1531,218 @@ const generateRandomInspiration = async () => {
 }
 
 // 导出方法
-const exportNovel = (format) => {
+const exportNovel = async (format) => {
   try {
-    let content = ''
-    let mimeType = ''
-    let extension = ''
+    ElMessage.info(`正在生成 ${format.toUpperCase()} 格式...`)
     
     switch (format) {
       case 'txt':
-        content = generateTxtContent()
-        mimeType = 'text/plain'
-        extension = 'txt'
+        downloadFile(generateTxtContent(), 'text/plain', 'txt')
         break
       case 'md':
-        content = generateMdContent()
-        mimeType = 'text/markdown'
-        extension = 'md'
+        downloadFile(generateMdContent(), 'text/markdown', 'md')
         break
       case 'html':
-        content = generateHtmlContent()
-        mimeType = 'text/html'
-        extension = 'html'
+        downloadFile(generateHtmlContent(), 'text/html', 'html')
+        break
+      case 'epub':
+        await exportEpub()
+        break
+      case 'pdf':
+        await exportPdf()
+        break
+      case 'docx':
+        await exportDocx()
         break
     }
     
-    const blob = new Blob([content], { type: mimeType })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${novel.value?.title || '小说'}.${extension}`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    
     ElMessage.success(`已导出 ${format.toUpperCase()} 格式`)
   } catch (error) {
-    ElMessage.error('导出失败')
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败: ' + error.message)
   }
+}
+
+// 通用下载方法
+const downloadFile = (content, mimeType, extension) => {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${novel.value?.title || '小说'}.${extension}`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+// 导出 EPUB (简化版 - 使用 HTML 包装)
+const exportEpub = async () => {
+  const htmlContent = generateHtmlContent()
+  const title = novel.value?.title || '未命名小说'
+  
+  // 创建简单的 EPUB 结构 (实际上是包装过的 HTML)
+  const epubContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${title}</title>
+  <style>
+    body { font-family: Georgia, serif; line-height: 1.8; padding: 20px; }
+    h1 { text-align: center; }
+    h2 { margin-top: 40px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+    .chapter { margin: 30px 0; }
+  </style>
+</head>
+<body>
+  ${htmlContent.replace(/<!DOCTYPE[^>]*>|<html[^>]*>|<\/html>|<head>.*<\/head>/gs, '')}
+</body>
+</html>`
+  
+  downloadFile(epubContent, 'application/epub+zip', 'epub')
+}
+
+// 导出 PDF
+const exportPdf = async () => {
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4'
+  })
+  
+  const title = novel.value?.title || '未命名小说'
+  
+  // 添加标题
+  doc.setFontSize(24)
+  doc.text(title, 105, 30, { align: 'center' })
+  
+  // 添加元信息
+  doc.setFontSize(12)
+  doc.text(`作者：AI小说生成系统`, 105, 45, { align: 'center' })
+  doc.text(`总字数：${totalWordCount.value} 字 | 章节数：${contents.value.length} 章`, 105, 52, { align: 'center' })
+  
+  let yPosition = 70
+  
+  contents.value.forEach((c, i) => {
+    // 检查是否需要新页面
+    if (yPosition > 250) {
+      doc.addPage()
+      yPosition = 20
+    }
+    
+    // 章节标题
+    doc.setFontSize(16)
+    doc.setTextColor(0, 0, 255)
+    const chapterTitle = `第 ${c.chapter_number || (contents.value.length - i)} 章 ${c.chapter_title || ''}`
+    doc.text(chapterTitle, 20, yPosition)
+    yPosition += 10
+    
+    // 章节内容
+    doc.setFontSize(11)
+    doc.setTextColor(0, 0, 0)
+    
+    // 分割长文本以适应页面宽度
+    const splitText = doc.splitTextToSize(c.content, 170)
+    
+    splitText.forEach((line) => {
+      if (yPosition > 280) {
+        doc.addPage()
+        yPosition = 20
+      }
+      doc.text(line, 20, yPosition)
+      yPosition += 5
+    })
+    
+    yPosition += 10
+  })
+  
+  doc.save(`${title}.pdf`)
+}
+
+// 导出 DOCX
+const exportDocx = async () => {
+  const title = novel.value?.title || '未命名小说'
+  
+  // 创建文档段落
+  const paragraphs = []
+  
+  // 标题
+  paragraphs.push(
+    new Paragraph({
+      text: title,
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    })
+  )
+  
+  // 元信息
+  paragraphs.push(
+    new Paragraph({
+      text: `作者：AI小说生成系统`,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 }
+    }),
+    new Paragraph({
+      text: `总字数：${totalWordCount.value} 字 | 章节数：${contents.value.length} 章`,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 400 }
+    })
+  )
+  
+  // 章节内容
+  contents.value.forEach((c, i) => {
+    const chapterTitle = `第 ${c.chapter_number || (contents.value.length - i)} 章 ${c.chapter_title || ''}`
+    
+    // 章节标题
+    paragraphs.push(
+      new Paragraph({
+        text: chapterTitle,
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 300, after: 200 },
+        border: {
+          bottom: {
+            color: "CCCCCC",
+            space: 1,
+            value: "single",
+            size: 6
+          }
+        }
+      })
+    )
+    
+    // 章节内容 - 按段落分割
+    const contentParagraphs = c.content.split('\n').filter(p => p.trim())
+    contentParagraphs.forEach(text => {
+      paragraphs.push(
+        new Paragraph({
+          text: text.trim(),
+          spacing: { after: 150, line: 360 },
+          indent: { firstLine: 420 }
+        })
+      )
+    })
+  })
+  
+  const doc = new DocxDocument({
+    sections: [{
+      properties: {
+        page: {
+          margin: {
+            top: 1440,    // 1 inch = 1440 twips
+            right: 1440,
+            bottom: 1440,
+            left: 1440
+          }
+        }
+      },
+      children: paragraphs
+    }]
+  })
+  
+  const blob = await Packer.toBlob(doc)
+  saveAs(blob, `${title}.docx`)
 }
 
 const generateTxtContent = () => {
@@ -1902,9 +2238,17 @@ watch(() => route.params.id, (newId, oldId) => {
 }
 
 .story-list {
-  max-height: calc(100vh - 320px);
+  height: calc(100vh - 320px);
   overflow-y: auto;
   padding-right: 8px;
+}
+
+.scroller {
+  height: 100%;
+}
+
+.scroller :deep(.vue-recycle-scroller__item-wrapper) {
+  padding-bottom: 24px;
 }
 
 .story-list::-webkit-scrollbar {
@@ -3009,5 +3353,131 @@ watch(() => route.params.id, (newId, oldId) => {
   padding: 32px;
   max-width: 1000px;
   margin: 0 auto;
+}
+
+/* 分享海报样式 */
+.poster-generating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 16px;
+}
+
+.poster-generating p {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.poster-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.poster-container {
+  width: 375px;
+  height: 667px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.poster-bg {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 30px;
+  box-sizing: border-box;
+}
+
+.poster-decoration {
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.poster-header {
+  text-align: center;
+  z-index: 1;
+  margin-bottom: 40px;
+}
+
+.poster-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.poster-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  line-height: 1.3;
+}
+
+.poster-stats {
+  display: flex;
+  gap: 30px;
+  z-index: 1;
+  margin-bottom: 40px;
+}
+
+.poster-stat-item {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  padding: 20px 25px;
+  border-radius: 16px;
+  min-width: 80px;
+}
+
+.poster-stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.poster-stat-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.poster-footer {
+  text-align: center;
+  z-index: 1;
+  margin-top: auto;
+}
+
+.poster-logo {
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+
+.poster-slogan {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.poster-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  width: 100%;
 }
 </style>
