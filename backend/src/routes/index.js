@@ -1,7 +1,7 @@
 import express from 'express';
 import novelController from '../controllers/novelController.js';
 import authController from '../controllers/authController.js';
-import timelineController from '../controllers/timelineController.js';
+import * as timelineController from '../controllers/timelineController.js';
 import { runValidationTests, runAllTests } from '../utils/testRunner.js';
 
 const router = express.Router();
