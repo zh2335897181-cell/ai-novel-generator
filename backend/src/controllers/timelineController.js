@@ -1,28 +1,39 @@
 import db from '../config/database.js'
+import cacheService from '../services/cacheService.js'
 
 /**
- * 获取小说的时间线事件列表
+ * 获取小说的时间线事件列表（带缓存）
  */
 async function getTimelineEvents(req, res) {
   try {
     const { novelId } = req.params
     
-    const [events] = await db.query(
-      `SELECT * FROM timeline_events 
-       WHERE novel_id = ? 
-       ORDER BY event_date ASC, created_at ASC`,
-      [novelId]
-    )
+    // 尝试从缓存获取
+    let events = await cacheService.getNovelTimeline(novelId)
     
-    // 解析JSON字段
-    const parsedEvents = events.map(event => ({
-      ...event,
-      related_characters: event.related_characters ? JSON.parse(event.related_characters) : []
-    }))
+    if (!events) {
+      // 缓存未命中，查询数据库
+      const [rows] = await db.query(
+        `SELECT * FROM timeline_events 
+         WHERE novel_id = ? 
+         ORDER BY event_date ASC, created_at ASC`,
+        [novelId]
+      )
+      
+      // 解析JSON字段
+      events = rows.map(event => ({
+        ...event,
+        related_characters: event.related_characters ? JSON.parse(event.related_characters) : []
+      }))
+      
+      // 写入缓存
+      await cacheService.cacheNovelTimeline(novelId, events)
+    }
     
     res.json({
       success: true,
-      data: parsedEvents
+      data: events,
+      cached: false // 实际应用中可返回缓存状态
     })
   } catch (error) {
     console.error('获取时间线事件失败:', error)
@@ -77,6 +88,9 @@ async function createTimelineEvent(req, res) {
       'SELECT * FROM timeline_events WHERE id = ?',
       [result.insertId]
     )
+    
+    // 清除该小说的时间线缓存（触发重新加载）
+    await cacheService.cacheNovelTimeline(novelId, null)
     
     res.json({
       success: true,
@@ -152,6 +166,12 @@ async function updateTimelineEvent(req, res) {
     
     values.push(eventId)
     
+    // 先获取小说ID用于缓存清除
+    const [eventInfo] = await db.query(
+      'SELECT novel_id FROM timeline_events WHERE id = ?',
+      [eventId]
+    )
+    
     await db.query(
       `UPDATE timeline_events SET ${updates.join(', ')} WHERE id = ?`,
       values
@@ -168,6 +188,11 @@ async function updateTimelineEvent(req, res) {
         success: false,
         error: '事件不存在'
       })
+    }
+    
+    // 清除该小说的时间线缓存
+    if (eventInfo.length > 0) {
+      await cacheService.cacheNovelTimeline(eventInfo[0].novel_id, null)
     }
     
     res.json({
@@ -194,6 +219,12 @@ async function deleteTimelineEvent(req, res) {
   try {
     const { eventId } = req.params
     
+    // 先获取小说ID用于缓存清除
+    const [eventInfo] = await db.query(
+      'SELECT novel_id FROM timeline_events WHERE id = ?',
+      [eventId]
+    )
+    
     const [result] = await db.query(
       'DELETE FROM timeline_events WHERE id = ?',
       [eventId]
@@ -204,6 +235,11 @@ async function deleteTimelineEvent(req, res) {
         success: false,
         error: '事件不存在'
       })
+    }
+    
+    // 清除该小说的时间线缓存
+    if (eventInfo.length > 0) {
+      await cacheService.cacheNovelTimeline(eventInfo[0].novel_id, null)
     }
     
     res.json({

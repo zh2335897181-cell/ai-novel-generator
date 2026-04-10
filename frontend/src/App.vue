@@ -46,9 +46,24 @@ onUnmounted(() => {
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
+@import './styles/print.css';
 
 /* ===== Design System - Kawaii Anime Dark Theme ===== */
 :root {
+  /* Z-Index 层级系统 */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-drawer: 300;
+  --z-modal: 1000;
+  --z-popover: 1100;
+  --z-tooltip: 1200;
+  --z-toast: 1300;
+  --z-notification: 1400;
+  --z-overlay: 1500;
+  --z-dialog: 1600;
+  --z-max: 9999;
+  
   /* Primary palette - Soft pastel kawaii */
   --primary: #fb7185;          /* soft sakura pink */
   --primary-light: #fecdd3;

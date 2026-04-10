@@ -727,9 +727,17 @@ onUnmounted(() => {
     padding: 24px 20px;
   }
   
+  /* 手机横屏和平板：2列 */
+  .novel-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+  /* 手机竖屏：单列 */
   .novel-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
   }
   
   .novel-card {

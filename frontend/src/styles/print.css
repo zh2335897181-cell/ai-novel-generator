@@ -1,0 +1,289 @@
+/**
+ * 打印样式优化
+ * 用于导出PDF和打印页面
+ */
+
+@media print {
+  /* ===== 隐藏非内容元素 ===== */
+  .app-header,
+  .mobile-nav-bar,
+  .sidebar,
+  .breadcrumb-sidebar,
+  .generate-box,
+  .reading-controls,
+  .feedback-float-btn,
+  .cookie-consent-banner,
+  .el-button,
+  .menu-actions,
+  .suggestions-panel,
+  .ai-suggest-btn,
+  .expand-icon,
+  .view-full-btn,
+  .chapter-actions,
+  .el-dialog,
+  .el-overlay,
+  .el-message,
+  .el-notification,
+  .el-loading-mask {
+    display: none !important;
+  }
+
+  /* ===== 页面基础设置 ===== */
+  @page {
+    size: A4;
+    margin: 20mm 15mm;
+  }
+
+  body {
+    font-size: 12pt;
+    line-height: 1.8;
+    color: #000;
+    background: #fff;
+  }
+
+  /* ===== 主内容区域 ===== */
+  .main-content,
+  .content-area,
+  .el-main {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* ===== 小说标题 ===== */
+  .novel-title,
+  .page-title,
+  .story-title {
+    font-size: 24pt;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 30pt;
+    page-break-after: avoid;
+  }
+
+  /* ===== 章节样式 ===== */
+  .story-card,
+  .chapter-card {
+    page-break-inside: avoid;
+    margin-bottom: 20pt;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+  }
+
+  .chapter-badge {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 10pt;
+  }
+
+  .chapter-title-text {
+    font-size: 16pt;
+    font-weight: bold;
+    margin-bottom: 15pt;
+    page-break-after: avoid;
+  }
+
+  .chapter-outline-box {
+    font-size: 11pt;
+    font-style: italic;
+    color: #666;
+    border-left: 3pt solid #999;
+    padding-left: 10pt;
+    margin-bottom: 15pt;
+    page-break-inside: avoid;
+  }
+
+  /* ===== 正文内容 ===== */
+  .story-content,
+  .chapter-content {
+    font-size: 12pt;
+    line-height: 1.8;
+    text-align: justify;
+    text-indent: 2em;
+    margin-bottom: 15pt;
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* 段落间距 */
+  .story-content p,
+  .chapter-content p {
+    margin-bottom: 0.8em;
+    text-indent: 2em;
+  }
+
+  /* 对话样式 */
+  .story-content p:contains('"'),
+  .chapter-content p:contains('"'),
+  .story-content p:contains('「'),
+  .chapter-content p:contains('「') {
+    text-indent: 0;
+    padding-left: 2em;
+  }
+
+  /* ===== 元信息 ===== */
+  .story-header,
+  .chapter-meta {
+    font-size: 10pt;
+    color: #666;
+    margin-bottom: 10pt;
+    page-break-after: avoid;
+  }
+
+  .story-time,
+  .chapter-date {
+    font-size: 10pt;
+    color: #999;
+  }
+
+  .word-count-info {
+    font-size: 10pt;
+    color: #666;
+    font-style: italic;
+  }
+
+  /* ===== 统计信息 ===== */
+  .stats-content,
+  .export-stats {
+    page-break-inside: avoid;
+  }
+
+  .stat-card {
+    border: 1pt solid #ddd;
+    padding: 10pt;
+    margin-bottom: 10pt;
+  }
+
+  /* ===== 封面页 ===== */
+  .print-cover {
+    page-break-after: always;
+    text-align: center;
+    padding-top: 40%;
+  }
+
+  .print-cover h1 {
+    font-size: 28pt;
+    margin-bottom: 20pt;
+  }
+
+  .print-cover .author {
+    font-size: 14pt;
+    color: #666;
+  }
+
+  /* ===== 目录 ===== */
+  .print-toc {
+    page-break-after: always;
+  }
+
+  .print-toc h2 {
+    font-size: 18pt;
+    margin-bottom: 20pt;
+    text-align: center;
+  }
+
+  .toc-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8pt;
+    font-size: 12pt;
+  }
+
+  .toc-dots {
+    flex: 1;
+    border-bottom: 1pt dotted #999;
+    margin: 0 5pt;
+  }
+
+  /* ===== 分页控制 ===== */
+  .chapter-section {
+    page-break-before: always;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  table, figure, img {
+    page-break-inside: avoid;
+  }
+
+  /* ===== 链接处理 ===== */
+  a {
+    color: #000;
+    text-decoration: none;
+  }
+
+  a[href]:after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #666;
+  }
+
+  /* ===== 特殊样式 ===== */
+  blockquote {
+    border-left: 3pt solid #999;
+    padding-left: 15pt;
+    margin-left: 0;
+    font-style: italic;
+    color: #666;
+    page-break-inside: avoid;
+  }
+
+  hr {
+    border: none;
+    border-top: 1pt solid #999;
+    margin: 20pt 0;
+  }
+
+  /* ===== 页眉页脚 ===== */
+  .print-header {
+    position: running(header);
+    font-size: 10pt;
+    color: #666;
+    border-bottom: 1pt solid #ddd;
+    padding-bottom: 5pt;
+  }
+
+  .print-footer {
+    position: running(footer);
+    font-size: 10pt;
+    color: #666;
+    text-align: center;
+  }
+
+  @page {
+    @top-center {
+      content: element(header);
+    }
+    @bottom-center {
+      content: element(footer);
+    }
+  }
+}
+
+/* ===== 打印预览模式（非打印时可用） ===== */
+.print-preview {
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 20mm 15mm;
+  background: #fff;
+  color: #000;
+  box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+
+.print-preview .novel-title {
+  font-size: 24pt;
+  text-align: center;
+  margin-bottom: 30pt;
+}
+
+.print-preview .story-content {
+  font-size: 12pt;
+  line-height: 1.8;
+  text-align: justify;
+}

@@ -40,6 +40,49 @@
 
     <!-- 实际内容 -->
     <div v-else>
+      <!-- 沉浸式阅读模式控制条 -->
+      <div v-if="isImmersiveMode" class="immersive-toolbar">
+        <el-button text circle @click="exitImmersiveMode">
+          <el-icon><Close /></el-icon>
+        </el-button>
+        <span class="immersive-title">{{ novel?.title }}</span>
+        <el-button text circle @click="toggleTheme">
+          <el-icon><Sunny v-if="themeStore.isDark" /><Moon v-else /></el-icon>
+        </el-button>
+      </div>
+      
+      <!-- 移动端顶部导航 -->
+      <div v-if="isMobile && !isImmersiveMode" class="mobile-header">
+        <div class="mobile-header-content">
+          <el-button text circle @click="goBack">
+            <el-icon><ArrowLeft /></el-icon>
+          </el-button>
+          <span class="mobile-title">{{ novel?.title || '小说详情' }}</span>
+          <el-button text circle @click="showMobileMenu = !showMobileMenu">
+            <el-icon><Menu /></el-icon>
+          </el-button>
+        </div>
+        
+        <!-- 移动端功能菜单 -->
+        <transition name="slide-down">
+          <div v-if="showMobileMenu" class="mobile-menu-panel">
+            <div class="mobile-nav-tabs">
+              <div 
+                v-for="tab in mobileTabs" 
+                :key="tab.key"
+                class="mobile-tab"
+                :class="{ active: activeMobileTab === tab.key }"
+                @click="switchMobileTab(tab.key)"
+              >
+                <el-icon><component :is="tab.icon" /></el-icon>
+                <span>{{ tab.label }}</span>
+                <el-badge v-if="tab.badge" :value="tab.badge" class="tab-badge" />
+              </div>
+            </div>
+          </div>
+        </transition>
+      </div>
+
       <!-- 游客限制提示 -->
     <div v-if="userStore.isRestricted" class="guest-restriction-banner">
       <div class="restriction-content">
@@ -868,7 +911,7 @@
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown, Menu, Sunny, Moon, FullScreen } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
 import { Document as DocxDocument, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } from 'docx'
@@ -877,12 +920,43 @@ import { useAIConfigStore } from '../stores/aiConfig'
 import CharacterGrowthChart from '../components/CharacterGrowthChart.vue'
 import RelationshipVisualization from '../components/RelationshipVisualization.vue'
 import { useUserStore } from '../stores/user'
+import { useThemeStore } from '../stores/theme'
 import { useNovelWorker } from '../composables/useNovelWorker'
 import TimelineManager from '../components/TimelineManager.vue'
+import MobileNavBar from '../components/layout/MobileNavBar.vue'
 
 const aiConfigStore = useAIConfigStore()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 const { isProcessing: workerProcessing, result: workerResult, analyzeText, calculateStats } = useNovelWorker()
+
+// ===== 响应式状态 =====
+const windowWidth = ref(window.innerWidth)
+const isMobile = computed(() => windowWidth.value <= 768)
+const isTablet = computed(() => windowWidth.value > 768 && windowWidth.value <= 1024)
+
+// 移动端菜单状态
+const showMobileMenu = ref(false)
+const activeMobileTab = ref('content')
+
+// 沉浸式阅读模式
+const isImmersiveMode = ref(false)
+
+// 移动端导航标签
+const mobileTabs = computed(() => [
+  { key: 'content', label: '内容', icon: Document },
+  { key: 'world', label: '世界', icon: OfficeBuilding },
+  { key: 'characters', label: '角色', icon: User, badge: characters.value.length },
+  { key: 'items', label: '物品', icon: Box, badge: items.value.length },
+  { key: 'settings', label: '设置', icon: Edit }
+])
+
+// 监听窗口变化
+const handleResize = () => {
+  windowWidth.value = window.innerWidth
+}
+onMounted(() => window.addEventListener('resize', handleResize))
+onUnmounted(() => window.removeEventListener('resize', handleResize))
 const route = useRoute()
 const router = useRouter()
 
@@ -943,6 +1017,40 @@ const writingTips = ref([
 ])
 const generatingInspiration = ref(false)
 const loading = ref(false)
+
+// ===== 移动端方法 =====
+const goBack = () => router.push('/novels')
+
+const switchMobileTab = (tab) => {
+  activeMobileTab.value = tab
+  showMobileMenu.value = false
+  
+  // 滚动到对应区域或展开对应面板
+  if (tab === 'world') {
+    activeMenu.value = 'world'
+  } else if (tab === 'characters') {
+    activeMenu.value = 'characters'
+  } else if (tab === 'items') {
+    activeMenu.value = 'items'
+  }
+}
+
+// ===== 沉浸式阅读模式 =====
+const enterImmersiveMode = () => {
+  isImmersiveMode.value = true
+  document.body.classList.add('immersive-reading')
+  // 关闭侧边栏
+  showMobileMenu.value = false
+}
+
+const exitImmersiveMode = () => {
+  isImmersiveMode.value = false
+  document.body.classList.remove('immersive-reading')
+}
+
+const toggleTheme = () => {
+  themeStore.toggle()
+}
 
 // 角色关系相关
 const relationshipRef = ref(null)
@@ -4229,6 +4337,210 @@ watch(() => route.params.id, (newId, oldId) => {
   
   .el-dialog__body {
     max-height: calc(100vh - 100px);
+  }
+}
+
+/* ===== 沉浸式阅读模式 ===== */
+.immersive-toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: var(--z-sticky);
+}
+
+.immersive-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+body.immersive-reading .sidebar,
+body.immersive-reading .breadcrumb-sidebar,
+body.immersive-reading .generate-box {
+  display: none;
+}
+
+body.immersive-reading .content-area {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 80px 40px 40px;
+}
+
+body.immersive-reading .story-list {
+  max-width: 100%;
+}
+
+/* ===== 移动端顶部导航 ===== */
+.mobile-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.mobile-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  height: 56px;
+}
+
+.mobile-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+.mobile-menu-panel {
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 12px 16px;
+}
+
+.mobile-nav-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mobile-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.05);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.mobile-tab.active {
+  background: linear-gradient(135deg, #fb7185 0%, #38bdf8 100%);
+  color: white;
+}
+
+.tab-badge :deep(.el-badge__content) {
+  transform: translate(20%, -20%) scale(0.8);
+}
+
+/* ===== 移动端底部导航 ===== */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.mobile-nav-item.active {
+  color: var(--primary);
+}
+
+.mobile-nav-item .el-icon {
+  font-size: 22px;
+}
+
+/* 滑入动画 */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* ===== 响应式优化 ===== */
+@media (max-width: 768px) {
+  /* 在移动端隐藏侧边栏 */
+  .el-aside {
+    display: none;
+  }
+  
+  /* 主内容区全宽 */
+  .el-main {
+    width: 100% !important;
+    padding: 16px;
+  }
+  
+  /* 内容区优化 */
+  .content-area {
+    padding: 0;
+  }
+  
+  /* 生成框优化 */
+  .generate-box {
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  
+  /* 章节卡片优化 */
+  .story-card {
+    padding: 16px;
+  }
+  
+  /* 沉浸式模式调整 */
+  body.immersive-reading .content-area {
+    padding: 70px 20px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mobile-title {
+    font-size: 15px;
+    max-width: 50%;
+  }
+  
+  body.immersive-reading .content-area {
+    padding: 70px 16px 20px;
+  }
+  
+  .immersive-title {
+    font-size: 16px;
   }
 }
 

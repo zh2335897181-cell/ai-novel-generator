@@ -1,4 +1,5 @@
 import novelService from '../services/novelService.js';
+import cacheService from '../services/cacheService.js';
 
 class NovelController {
   // 创建小说
@@ -19,31 +20,54 @@ class NovelController {
       
       const userId = req.headers['user-id'] || 1; // 简化：从header获取
       const novelId = await novelService.createNovel(userId, title.trim());
+      
+      // 清除用户小说列表缓存
+      await cacheService.del(`novels:user:${userId}`);
+      
       res.json({ success: true, novelId });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  // 获取小说列表
+  // 获取小说列表（带缓存）
   async list(req, res) {
     try {
       const userId = req.headers['user-id'] || 1;
-      const novels = await novelService.getNovelsByUser(userId);
+      const cacheKey = `novels:user:${userId}`;
+      
+      // 尝试从缓存获取
+      let novels = await cacheService.get(cacheKey);
+      
+      if (!novels) {
+        novels = await novelService.getNovelsByUser(userId);
+        // 缓存 5 分钟
+        await cacheService.set(cacheKey, novels, 300);
+      }
+      
       res.json({ success: true, data: novels });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  // 获取小说详情
+  // 获取小说详情（带缓存）
   async detail(req, res) {
     try {
       const { id } = req.params;
-      const detail = await novelService.getNovelDetail(id);
+      
+      // 尝试从缓存获取
+      let detail = await cacheService.get(cacheService.patterns.NOVEL(id));
+      
       if (!detail) {
-        return res.status(404).json({ success: false, message: '小说不存在' });
+        detail = await novelService.getNovelDetail(id);
+        if (!detail) {
+          return res.status(404).json({ success: false, message: '小说不存在' });
+        }
+        // 缓存 10 分钟
+        await cacheService.set(cacheService.patterns.NOVEL(id), detail, 600);
       }
+      
       res.json({ success: true, data: detail });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -66,6 +90,12 @@ class NovelController {
       }
       
       await novelService.deleteNovel(id);
+      
+      // 清除该小说的所有缓存
+      await cacheService.invalidateNovel(id);
+      // 清除用户小说列表缓存
+      await cacheService.del(`novels:user:${userId}`);
+      
       res.json({ success: true, message: '删除成功' });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -92,6 +122,10 @@ class NovelController {
       }
       
       const characterId = await novelService.addCharacter(novelId, name.trim(), level, attributes);
+      
+      // 清除角色列表缓存
+      await cacheService.cacheNovelCharacters(novelId, null);
+      
       res.json({ success: true, characterId });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -103,6 +137,12 @@ class NovelController {
     try {
       const { novelId, rules, background, extra } = req.body;
       await novelService.updateWorldState(novelId, rules, background, extra);
+      
+      // 清除世界观缓存
+      await cacheService.cacheNovelWorld(novelId, null);
+      // 清除小说详情缓存（因为包含世界观信息）
+      await cacheService.del(cacheService.patterns.NOVEL(novelId));
+      
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -161,11 +201,19 @@ class NovelController {
     }
   }
 
-  // 获取角色列表
+  // 获取角色列表（带缓存）
   async getCharacters(req, res) {
     try {
       const { novelId } = req.params;
-      const characters = await novelService.getCharacters(novelId);
+      
+      // 尝试从缓存获取
+      let characters = await cacheService.getNovelCharacters(novelId);
+      
+      if (!characters) {
+        characters = await novelService.getCharacters(novelId);
+        await cacheService.cacheNovelCharacters(novelId, characters);
+      }
+      
       res.json({ success: true, data: characters });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
