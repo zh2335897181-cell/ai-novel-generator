@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="login-page">
     <div class="login-container">
       <div class="login-left">
@@ -6,7 +6,7 @@
           <div class="brand-icon">
             <el-icon :size="48"><Reading /></el-icon>
           </div>
-          <h1>AI小说生成系统</h1>
+          <h1>一点纸墨</h1>
           <p class="brand-subtitle">基于MySQL外部记忆的智能小说创作平台</p>
         </div>
         
@@ -35,6 +35,12 @@
           <div class="login-header">
             <h2>{{ isRegister ? '注册账号' : '欢迎回来' }}</h2>
             <p>{{ isRegister ? '创建新账号开始创作' : '登录您的账号继续创作' }}</p>
+          </div>
+
+          <!-- 永久免费提示 -->
+          <div v-if="isRegister" class="free-notice">
+            <el-icon><CircleCheck /></el-icon>
+            <span><strong>永久免费承诺</strong>：基础创作功能永久免费使用，无需担心付费（详见<router-link to="/terms" target="_blank">用户协议</router-link>）</span>
           </div>
 
           <el-form
@@ -73,6 +79,17 @@
                 size="large"
                 show-password
               />
+            </el-form-item>
+
+            <el-form-item v-if="isRegister" prop="agreement">
+              <el-checkbox v-model="form.agreement">
+                <span class="agreement-text">
+                  我已阅读并同意
+                  <router-link to="/terms" target="_blank">用户协议</router-link>
+                  和
+                  <router-link to="/privacy" target="_blank">隐私政策</router-link>
+                </span>
+              </el-checkbox>
             </el-form-item>
 
             <el-form-item>
@@ -119,7 +136,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, Lock, Reading, Document, Refresh, TrendCharts, UserFilled } from '@element-plus/icons-vue'
+import { User, Lock, Reading, Document, Refresh, TrendCharts, UserFilled, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../stores/user'
 import { useAIConfigStore } from '../stores/aiConfig'
@@ -135,7 +152,8 @@ const aiConfigStore = useAIConfigStore()
 const form = reactive({
   username: '',
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
+  agreement: false
 })
 
 const validateConfirmPassword = (rule, value, callback) => {
@@ -158,6 +176,16 @@ const rules = {
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
     { validator: validateConfirmPassword, trigger: 'blur' }
+  ],
+  agreement: [
+    { required: true, message: '请阅读并同意用户协议和隐私政策', trigger: 'change' },
+    { validator: (rule, value, callback) => {
+      if (!value) {
+        callback(new Error('请阅读并同意用户协议和隐私政策'))
+      } else {
+        callback()
+      }
+    }, trigger: 'change' }
   ]
 }
 
@@ -462,6 +490,57 @@ const guestLogin = async () => {
   margin-top: 8px;
 }
 
+/* 永久免费提示 */
+.free-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border-left: 3px solid #22c55e;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.free-notice .el-icon {
+  font-size: 20px;
+  color: #22c55e;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.free-notice span {
+  font-size: 13px;
+  color: #166534;
+  line-height: 1.5;
+}
+
+.free-notice a {
+  color: #16a34a;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.free-notice a:hover {
+  text-decoration: underline;
+}
+
+.agreement-text {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.agreement-text a {
+  color: #e67e22;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.agreement-text a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 768px) {
   .login-page {
     padding: 20px;
@@ -469,14 +548,19 @@ const guestLogin = async () => {
   
   .login-container {
     flex-direction: column;
+    border-radius: 16px;
   }
   
   .login-left {
-    padding: 40px 30px;
+    padding: 30px 24px;
   }
   
   .brand-section h1 {
-    font-size: 24px;
+    font-size: 22px;
+  }
+  
+  .brand-section p {
+    font-size: 14px;
   }
   
   .features-preview {
@@ -484,7 +568,100 @@ const guestLogin = async () => {
   }
   
   .login-right {
-    padding: 40px 30px;
+    padding: 30px 24px;
+  }
+  
+  .login-header h2 {
+    font-size: 24px;
+  }
+  
+  .login-header p {
+    font-size: 14px;
+  }
+  
+  /* 表单优化 */
+  .login-form :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+  
+  .login-form :deep(.el-input__inner) {
+    font-size: 15px;
+    padding: 12px 15px;
+  }
+  
+  .login-form :deep(.el-button) {
+    padding: 12px 20px;
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    padding: 16px;
+  }
+  
+  .login-container {
+    border-radius: 12px;
+  }
+  
+  .login-left {
+    padding: 24px 20px;
+  }
+  
+  .brand-section h1 {
+    font-size: 20px;
+  }
+  
+  .brand-section p {
+    font-size: 13px;
+  }
+  
+  .login-right {
+    padding: 24px 20px;
+  }
+  
+  .login-card {
+    max-width: 100%;
+  }
+  
+  .login-header {
+    margin-bottom: 24px;
+  }
+  
+  .login-header h2 {
+    font-size: 22px;
+  }
+  
+  .login-header p {
+    font-size: 13px;
+  }
+  
+  .login-form :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+  
+  .login-form :deep(.el-form-item__label) {
+    font-size: 14px;
+    padding-bottom: 6px;
+  }
+  
+  .login-form :deep(.el-input__inner) {
+    font-size: 14px;
+    padding: 10px 12px;
+  }
+  
+  .login-form :deep(.el-button) {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  
+  .login-footer p {
+    font-size: 13px;
+  }
+  
+  .guest-hint {
+    font-size: 11px;
   }
 }
 </style>
+

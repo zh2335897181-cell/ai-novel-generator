@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+﻿import { ref } from 'vue';
 import { useAIConfigStore } from '../stores/aiConfig';
 import { ElMessage } from 'element-plus';
 
@@ -139,3 +139,4 @@ export function useAIGeneration() {
     reset
   };
 }
+

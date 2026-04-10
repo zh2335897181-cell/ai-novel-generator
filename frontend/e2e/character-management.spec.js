@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 
 test.describe('Character Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -63,3 +63,4 @@ test.describe('Character Management', () => {
     await expect(page.locator('.character-growth-chart')).toBeVisible();
   });
 });
+

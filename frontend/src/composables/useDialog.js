@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+﻿import { ref } from 'vue';
 
 /**
  * 对话框管理 Composable
@@ -39,3 +39,4 @@ export function useDialogs(dialogNames = []) {
 
   return dialogs;
 }
+

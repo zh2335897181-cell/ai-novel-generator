@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+﻿import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AIConfigDialog from '../AIConfigDialog.vue';
 import ElementPlus from 'element-plus';
@@ -41,3 +41,4 @@ describe('AIConfigDialog', () => {
     expect(wrapper.vm).toBeDefined();
   });
 });
+

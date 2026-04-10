@@ -462,6 +462,7 @@ class NovelService {
       let worldState, characters, minorCharacters, items, locations, summary;
       let nextChapterNumber;
       let previousChapterContent = ''; // 添加上一章内容变量
+      let timelineEvents = []; // 添加时间线事件变量
 
       try {
         flow.startPhase(FlowPhase.QUERY_STATE);
@@ -491,7 +492,7 @@ class NovelService {
         }
 
         // 查询时间线事件用于AI生成
-        const [timelineEvents] = await conn.query(
+        [timelineEvents] = await conn.query(
           'SELECT * FROM timeline_events WHERE novel_id = ? ORDER BY event_date ASC, created_at ASC',
           [novelId]
         );
@@ -903,7 +904,7 @@ class NovelService {
       const { worldState, characters, summary, lastChapter } = context || {};
       
       // 构建提示词
-      const prompt = `你是一位专业的小说编剧，请根据以下信息为下一章生成5个剧情建议。
+      const prompt = `你是一位专业的小说编剧，请根据以下信息为下一章生成5个详细的剧情建议。
 
 ## 当前世界观 ##
 类型：${worldState?.genre || '未设定'}
@@ -920,13 +921,17 @@ ${summary || '故事刚开始'}
 ${lastChapter ? `第${lastChapter.chapter_number || 1}章：${lastChapter.chapter_title || '无标题'}\n${lastChapter.chapter_outline || lastChapter.content?.substring(0, 200) + '...' || '无内容'}` : '暂无'}
 
 ## 要求 ##
-请生成5个有趣、合理的剧情建议，每个建议30-50字。
-建议要承接上一章剧情，推动故事发展。
-避免重复已有情节。
+请生成5个详细、有趣的剧情建议，每个建议80-120字，包含：
+1. 具体场景设定（时间、地点、氛围）
+2. 关键冲突或事件
+3. 涉及的角色和互动
+4. 预期效果（悬念、情感冲击或剧情推进）
+
+建议要承接上一章剧情，推动故事发展，避免重复已有情节。
 
 ## 输出格式 ##
 直接输出5条建议，每条一行，前面加上序号：
-1. 建议内容
+1. 建议内容（详细描述场景、冲突、角色互动和预期效果）
 2. 建议内容
 ...
 `;

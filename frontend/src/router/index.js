@@ -1,9 +1,12 @@
-import { createRouter, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHistory } from 'vue-router'
 import Landing from '../views/Landing.vue'
 import NovelList from '../views/NovelList.vue'
 import NovelDetail from '../views/NovelDetail.vue'
 import Login from '../views/Login.vue'
 import AIConfig from '../views/AIConfig.vue'
+import MobileTest from '../views/MobileTest.vue'
+import Privacy from '../views/PrivacyPolicy.vue'
+import Terms from '../views/TermsOfService.vue'
 
 const routes = [
   {
@@ -32,6 +35,24 @@ const routes = [
     path: '/ai-config',
     name: 'AIConfig',
     component: AIConfig
+  },
+  {
+    path: '/mobile-test',
+    name: 'MobileTest',
+    component: MobileTest,
+    meta: { public: true }
+  },
+  {
+    path: '/privacy',
+    name: 'Privacy',
+    component: Privacy,
+    meta: { public: true }
+  },
+  {
+    path: '/terms',
+    name: 'Terms',
+    component: Terms,
+    meta: { public: true }
   }
 ]
 
@@ -57,3 +78,4 @@ router.beforeEach((to, from, next) => {
 })
 
 export default router
+

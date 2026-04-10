@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 
 describe('Example Test Suite', () => {
   it('should pass basic assertion', () => {
@@ -30,3 +30,4 @@ describe('Example Test Suite', () => {
     await expect(promise).resolves.toBe('success');
   });
 });
+

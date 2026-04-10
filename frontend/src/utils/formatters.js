@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 格式化工具函数
  */
 
@@ -126,3 +126,4 @@ export function stringifyJSONSafe(obj, defaultValue = '{}') {
     return defaultValue;
   }
 }
+

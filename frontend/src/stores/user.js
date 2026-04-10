@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api/novel'
@@ -362,3 +362,4 @@ export const useUserStore = defineStore('user', () => {
     clearGuestData
   }
 })
+

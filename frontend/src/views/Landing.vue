@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="landing-page">
     <!-- 背景动画 -->
     <div class="bg-animation">
@@ -11,7 +11,7 @@
     <nav class="landing-nav">
       <div class="nav-logo">
         <el-icon :size="28"><Reading /></el-icon>
-        <span>AI小说生成系统</span>
+        <span>一点纸墨</span>
       </div>
       <div class="nav-actions">
         <el-button type="primary" size="large" @click="goToLogin">
@@ -31,20 +31,6 @@
           智能世界观构建 · 角色成长追踪 · 无限剧情延展<br>
           让创作灵感源源不断
         </p>
-        <div class="hero-stats">
-          <div class="stat-item">
-            <div class="stat-number">10万+</div>
-            <div class="stat-label">已生成章节</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-number">5000+</div>
-            <div class="stat-label">创作者</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-number">AI驱动</div>
-            <div class="stat-label">智能创作</div>
-          </div>
-        </div>
         <div class="hero-buttons">
           <el-button type="primary" size="large" class="cta-button" @click="goToLogin">
             <el-icon><MagicStick /></el-icon>
@@ -244,15 +230,15 @@
       </div>
       <div class="about-stats">
         <div class="about-stat-item">
-          <div class="about-stat-number">2024</div>
+          <div class="about-stat-number">25年</div>
           <div class="about-stat-label">创立年份</div>
         </div>
         <div class="about-stat-item">
-          <div class="about-stat-number">100%</div>
-          <div class="about-stat-label">免费使用</div>
+          <div class="about-stat-number">永久</div>
+          <div class="about-stat-label">基础功能免费</div>
         </div>
         <div class="about-stat-item">
-          <div class="about-stat-number">24/7</div>
+          <div class="about-stat-number">25/4</div>
           <div class="about-stat-label">AI在线</div>
         </div>
       </div>
@@ -275,13 +261,97 @@
       <div class="footer-content">
         <div class="footer-logo">
           <el-icon><Reading /></el-icon>
-          <span>AI小说生成系统</span>
+          <span>一点纸墨</span>
         </div>
-        <p class="footer-copyright">© 2026 AI Novel Generator. All rights reserved.</p>
+        <p class="footer-copyright"> 2026 一点纸墨. All rights reserved.</p>
+        <div class="footer-links">
+          <router-link to="/privacy" class="footer-link">隐私政策</router-link>
+          <span class="divider">|</span>
+          <router-link to="/terms" class="footer-link">用户协议</router-link>
+          <span class="divider">|</span>
+          <a href="https://beian.miit.gov.cn/" target="_blank" class="footer-link">京ICP备XXXXXXXX号-1</a>
+        </div>
+        <p class="beian-hint">备案号申请中，此链接将在备案完成后生效</p>
+        <div class="footer-disclaimer">
+          <el-icon><Warning /></el-icon>
+          <span>严禁使用本平台生成或传播侵犯他人知识产权（包括但不限于著作权、商标权等）的内容。如出现侵权行为，与本站开发者无关，由使用者自行承担全部法律责任。</span>
+        </div>
       </div>
     </footer>
 
-    <!-- 游客倒计时提示 -->
+    <!-- 免责声明弹窗 -->
+    <el-dialog
+      v-model="showDisclaimerDialog"
+      title="⚠️ 重要声明"
+      width="600px"
+      :close-on-click-modal="false"
+      :show-close="false"
+      class="disclaimer-dialog"
+      align-center
+    >
+      <div class="disclaimer-content">
+        <div class="disclaimer-icon">
+          <el-icon><Warning /></el-icon>
+        </div>
+        <div class="disclaimer-text">
+          <p class="disclaimer-title">严禁侵权行为</p>
+          <p>使用本平台即表示您同意遵守以下条款：</p>
+          <ul>
+            <li>严禁生成或传播侵犯他人知识产权（包括但不限于著作权、商标权等）的内容</li>
+            <li>禁止利用本平台创作违反法律法规或公序良俗的内容</li>
+            <li>用户对自己生成的所有内容承担全部法律责任</li>
+            <li>如出现侵权行为，与本站开发者无关</li>
+          </ul>
+          <p class="disclaimer-highlight">继续使用即表示您已阅读并同意上述条款</p>
+        </div>
+      </div>
+      <template #footer>
+        <div class="disclaimer-footer">
+          <el-button type="danger" size="large" @click="acceptDisclaimer">
+            我已阅读并同意
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 年龄确认弹窗 -->
+    <el-dialog
+      v-model="showAgeDialog"
+      title="🔞 年龄确认"
+      width="500px"
+      :close-on-click-modal="false"
+      :show-close="false"
+      class="age-dialog"
+      align-center
+    >
+      <div class="age-content">
+        <div class="age-icon">
+          <el-icon><UserFilled /></el-icon>
+        </div>
+        <div class="age-text">
+          <p class="age-title">您已满 14 周岁吗？</p>
+          <p class="age-description">
+            根据相关法律法规及本平台的用户协议，使用本服务需年满 14 周岁。
+            如果您未满 14 周岁，请在监护人陪同下使用，或由监护人代为注册。
+          </p>
+          <div class="age-notice">
+            <el-icon><Warning /></el-icon>
+            <span>我们可能会要求您提供年龄证明</span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="age-footer">
+          <el-button size="large" @click="rejectAge">
+            未满 14 岁
+          </el-button>
+          <el-button type="primary" size="large" @click="confirmAge">
+            我已满 14 岁
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <div v-if="showGuestWarning" class="guest-warning-banner">
       <el-icon><Timer /></el-icon>
       <span>游客体验剩余 {{ formattedTime }}</span>
@@ -299,7 +369,7 @@ import { ElMessage } from 'element-plus'
 import { 
   Reading, ArrowRight, MagicStick, Document, 
   User, TrendCharts, OfficeBuilding, UserFilled, 
-  Share, Download, Check, Close, Timer 
+  Share, Download, Check, Close, Timer, Warning 
 } from '@element-plus/icons-vue'
 
 import { useUserStore } from '../stores/user'
@@ -311,7 +381,43 @@ const { isLoggedIn } = storeToRefs(userStore)
 const featuresRef = ref(null)
 const showGuestWarning = ref(false)
 const remainingMs = ref(0)
+const showDisclaimerDialog = ref(false)
+const showAgeDialog = ref(false)
 const guestTimer = ref(null)
+
+// 检查年龄确认和免责声明
+const checkDisclaimer = () => {
+  const ageVerified = localStorage.getItem('ageVerified')
+  const hasAccepted = localStorage.getItem('disclaimerAccepted')
+
+  if (!ageVerified) {
+    showAgeDialog.value = true
+  } else if (!hasAccepted) {
+    showDisclaimerDialog.value = true
+  }
+}
+
+// 确认年龄
+const confirmAge = () => {
+  localStorage.setItem('ageVerified', 'true')
+  showAgeDialog.value = false
+  // 年龄确认后，继续显示免责声明
+  showDisclaimerDialog.value = true
+}
+
+// 拒绝年龄（未满14岁）
+const rejectAge = () => {
+  ElMessage.warning('根据平台规定，未满14岁需在监护人陪同下使用')
+  showAgeDialog.value = false
+  // 仍然可以继续访问，但给出提示
+  showDisclaimerDialog.value = true
+}
+
+// 接受免责声明
+const acceptDisclaimer = () => {
+  localStorage.setItem('disclaimerAccepted', 'true')
+  showDisclaimerDialog.value = false
+}
 
 // 格式化剩余时间为 "X分Y秒Z毫秒"
 const formattedTime = computed(() => {
@@ -363,6 +469,9 @@ const goToGuestLogin = async () => {
 
 // 检查游客状态
 onMounted(() => {
+  // 检查免责声明
+  checkDisclaimer()
+  
   const isGuest = localStorage.getItem('guestMode') === 'true'
   const startTime = parseInt(localStorage.getItem('guestStartTime') || '0')
   
@@ -559,31 +668,6 @@ onUnmounted(() => {
   color: #94a3b8;
   line-height: 1.8;
   margin-bottom: 40px;
-}
-
-.hero-stats {
-  display: flex;
-  gap: 40px;
-  margin-bottom: 40px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  font-size: 32px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #64748b;
-  margin-top: 4px;
 }
 
 .hero-buttons {
@@ -1139,6 +1223,61 @@ onUnmounted(() => {
   color: #64748b;
 }
 
+.beian-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 4px 0 8px 0;
+}
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.footer-link {
+  color: #94a3b8;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.footer-link:hover {
+  color: #e67e22;
+}
+
+.divider {
+  color: #64748b;
+}
+
+.footer-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 900px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(185, 28, 28, 0.15) 100%);
+  border: 2px solid rgba(239, 68, 68, 0.4);
+  border-radius: 10px;
+  margin-top: 16px;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+}
+
+.footer-disclaimer .el-icon {
+  font-size: 22px;
+  color: #ef4444;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.footer-disclaimer span {
+  font-size: 15px;
+  color: #fecaca;
+  line-height: 1.7;
+  text-align: left;
+  font-weight: 600;
+}
+
 /* Guest Warning Banner */
 .guest-warning-banner {
   position: fixed;
@@ -1185,6 +1324,10 @@ onUnmounted(() => {
     text-align: center;
     padding-top: 140px;
   }
+  
+  .hero-content {
+    max-width: 100%;
+  }
 
   .hero-stats {
     justify-content: center;
@@ -1195,8 +1338,30 @@ onUnmounted(() => {
   }
 
   .hero-visual {
-    height: 300px;
+    height: 350px;
     width: 100%;
+    margin-top: 50px;
+  }
+  
+  /* 平板设备上保留浮动卡片但调整位置 */
+  .floating-card {
+    padding: 12px 18px;
+    font-size: 13px;
+  }
+  
+  .card-1 {
+    top: 10%;
+    left: 5%;
+  }
+  
+  .card-2 {
+    top: 50%;
+    right: 5%;
+  }
+  
+  .card-3 {
+    bottom: 10%;
+    left: 15%;
   }
 
   .features-grid {
@@ -1224,24 +1389,100 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .landing-nav {
-    padding: 16px 24px;
+    padding: 12px 20px;
+  }
+  
+  .nav-logo {
+    font-size: 16px;
+  }
+  
+  .nav-logo .el-icon {
+    font-size: 22px !important;
+  }
+  
+  .nav-actions .el-button {
+    padding: 8px 16px;
+    font-size: 14px;
   }
 
   .hero-section {
-    padding: 120px 24px 60px;
+    padding: 100px 20px 50px;
+    flex-direction: column;
+    text-align: center;
   }
 
   .hero-title {
-    font-size: 36px;
+    font-size: 32px;
+    line-height: 1.3;
+  }
+  
+  .hero-subtitle {
+    font-size: 15px;
+    line-height: 1.6;
+    padding: 0 10px;
   }
 
   .hero-stats {
-    flex-direction: column;
-    gap: 20px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+  }
+  
+  .stat-item {
+    flex: 1 1 calc(33.333% - 12px);
+    min-width: 100px;
+  }
+  
+  .stat-number {
+    font-size: 24px;
+  }
+  
+  .stat-label {
+    font-size: 12px;
   }
 
   .hero-buttons {
     flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  
+  .hero-buttons .el-button {
+    width: 100%;
+    max-width: 300px;
+  }
+  
+  .cta-button,
+  .secondary-button {
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+  
+  /* 移动端Hero Visual优化 - 关键修复 */
+  .hero-visual {
+    height: 280px;
+    margin-top: 40px;
+    width: 100%;
+    position: relative;
+  }
+  
+  /* 隐藏浮动卡片，避免重叠 */
+  .floating-card {
+    display: none !important;
+  }
+  
+  /* 主插图居中显示 */
+  .main-illustration {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  
+  .book-animation {
+    width: 150px;
+    height: 180px;
   }
 
   .features-section,
@@ -1249,31 +1490,67 @@ onUnmounted(() => {
   .pricing-section,
   .about-section,
   .cta-section {
-    padding: 60px 24px;
+    padding: 50px 20px;
   }
 
   .section-title {
-    font-size: 28px;
+    font-size: 26px;
+    margin-bottom: 30px;
   }
 
   .features-grid {
     grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .feature-card {
+    padding: 24px;
+  }
+  
+  .feature-icon {
+    width: 56px;
+    height: 56px;
+  }
+  
+  .feature-icon .el-icon {
+    font-size: 28px !important;
+  }
+  
+  .feature-card h3 {
+    font-size: 18px;
+  }
+  
+  .feature-card p {
+    font-size: 14px;
   }
 
   .about-content {
     grid-template-columns: 1fr;
+    gap: 30px;
   }
 
   .about-stats {
-    flex-direction: column;
-    gap: 30px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  
+  .about-stat {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 140px;
   }
 
   .pricing-cards {
     flex-direction: column;
     align-items: center;
+    gap: 20px;
   }
 
+  .pricing-card {
+    width: 100%;
+    max-width: 400px;
+  }
+  
   .pricing-card.pro {
     transform: none;
   }
@@ -1281,5 +1558,521 @@ onUnmounted(() => {
   .pricing-card.pro:hover {
     transform: translateY(-8px);
   }
+  
+  .process-step {
+    padding: 20px;
+  }
+  
+  .step-number {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+  }
+  
+  .step-content h3 {
+    font-size: 18px;
+  }
+  
+  .step-content p {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-nav {
+    padding: 10px 16px;
+  }
+  
+  .nav-logo {
+    font-size: 14px;
+  }
+  
+  .nav-logo .el-icon {
+    font-size: 20px !important;
+  }
+  
+  .nav-actions .el-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  .hero-section {
+    padding: 80px 16px 40px;
+  }
+  
+  .hero-title {
+    font-size: 28px;
+    margin-bottom: 16px;
+  }
+  
+  .hero-subtitle {
+    font-size: 14px;
+    padding: 0 10px;
+    margin-bottom: 24px;
+  }
+  
+  .hero-subtitle br {
+    display: none;
+  }
+  
+  .hero-stats {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  
+  .stat-item {
+    flex: 1 1 100%;
+  }
+  
+  .stat-number {
+    font-size: 22px;
+  }
+  
+  .stat-label {
+    font-size: 11px;
+  }
+  
+  .hero-buttons {
+    gap: 10px;
+  }
+  
+  .hero-buttons .el-button {
+    max-width: 100%;
+  }
+  
+  .cta-button,
+  .secondary-button {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+  
+  /* 小屏Hero Visual优化 */
+  .hero-visual {
+    height: 200px;
+    margin-top: 30px;
+  }
+  
+  /* 确保浮动卡片隐藏 */
+  .floating-card {
+    display: none !important;
+  }
+  
+  .main-illustration {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  
+  .book-animation {
+    width: 120px;
+    height: 150px;
+  }
+  
+  .features-section,
+  .process-section,
+  .pricing-section,
+  .about-section,
+  .cta-section {
+    padding: 40px 16px;
+  }
+  
+  .section-title {
+    font-size: 24px;
+    margin-bottom: 24px;
+  }
+  
+  .feature-card {
+    padding: 20px;
+  }
+  
+  .feature-icon {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .feature-icon .el-icon {
+    font-size: 24px !important;
+  }
+  
+  .feature-card h3 {
+    font-size: 16px;
+    margin: 16px 0 8px;
+  }
+  
+  .feature-card p {
+    font-size: 13px;
+  }
+  
+  .about-stats {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .about-stat {
+    flex: 1 1 100%;
+  }
+  
+  .pricing-card {
+    max-width: 100%;
+  }
+  
+  .pricing-card h3 {
+    font-size: 20px;
+  }
+  
+  .pricing-price {
+    font-size: 36px;
+  }
+  
+  .process-step {
+    padding: 16px;
+  }
+  
+  .step-number {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+  
+  .step-content h3 {
+    font-size: 16px;
+  }
+  
+  .step-content p {
+    font-size: 13px;
+  }
+  
+  .cta-section h2 {
+    font-size: 24px;
+  }
+  
+  .cta-section p {
+    font-size: 14px;
+  }
+  
+  .footer-content {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+  
+  .footer-links {
+    justify-content: center;
+  }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+  .feature-card:hover,
+  .pricing-card:hover,
+  .process-step:hover {
+    transform: none;
+  }
+  
+  .feature-card:active {
+    transform: scale(0.98);
+  }
+  
+  .el-button:active {
+    transform: scale(0.95);
+  }
+}
+
+/* 横屏优化 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .hero-section {
+    padding: 60px 20px 40px;
+  }
+  
+  .hero-title {
+    font-size: 28px;
+  }
+  
+  .hero-visual {
+    height: 180px;
+  }
+  
+  .features-section,
+  .process-section,
+  .pricing-section,
+  .about-section,
+  .cta-section {
+    padding: 40px 20px;
+  }
+}
+/* 免责声明弹窗样式 - 温馨纸质风 */
+:deep(.disclaimer-dialog) {
+  border-radius: 4px !important;
+  overflow: hidden;
+  box-shadow: 
+    0 1px 1px rgba(0,0,0,0.08),
+    0 2px 2px rgba(0,0,0,0.08),
+    0 4px 4px rgba(0,0,0,0.08),
+    0 8px 8px rgba(0,0,0,0.08) !important;
+}
+
+:deep(.disclaimer-dialog .el-dialog__header) {
+  background: linear-gradient(180deg, #fefcf8 0%, #f5f0e8 100%);
+  padding: 24px 30px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid #e8e0d5;
+}
+
+:deep(.disclaimer-dialog .el-dialog__title) {
+  color: #8b4513 !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  font-family: 'STKaiti', 'KaiTi', 'SimKaiti', cursive, serif !important;
+  letter-spacing: 2px;
+}
+
+:deep(.disclaimer-dialog .el-dialog__body) {
+  padding: 0 !important;
+  background: linear-gradient(180deg, #fefcf8 0%, #faf6f0 100%);
+}
+
+:deep(.disclaimer-dialog .el-dialog__footer) {
+  background: linear-gradient(180deg, #faf6f0 0%, #f5f0e8 100%);
+  padding: 24px 30px !important;
+  border-top: 1px dashed #d4c8b8;
+}
+
+.disclaimer-content {
+  padding: 35px 40px;
+  color: #5d4e37;
+}
+
+.disclaimer-icon {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.disclaimer-icon .el-icon {
+  font-size: 48px;
+  color: #e67e22;
+}
+
+.disclaimer-text p {
+  font-size: 15px;
+  line-height: 2;
+  color: #6b5b4f;
+  margin-bottom: 16px;
+}
+
+.disclaimer-title {
+  font-size: 20px !important;
+  font-weight: 600;
+  color: #8b4513 !important;
+  text-align: center;
+  margin-bottom: 24px !important;
+  font-family: 'STKaiti', 'KaiTi', 'SimKaiti', cursive, serif !important;
+  letter-spacing: 3px;
+  border-bottom: 2px solid #e67e22;
+  padding-bottom: 12px;
+  display: inline-block;
+  width: 100%;
+}
+
+.disclaimer-text ul {
+  margin: 24px 0;
+  padding-left: 28px;
+  list-style: none;
+}
+
+.disclaimer-text li {
+  font-size: 14px;
+  line-height: 2.2;
+  color: #5d4e37;
+  margin-bottom: 14px;
+  position: relative;
+  padding-left: 24px;
+}
+
+.disclaimer-text li::before {
+  content: '●';
+  position: absolute;
+  left: 0;
+  color: #e67e22;
+  font-size: 10px;
+  top: 2px;
+}
+
+.disclaimer-highlight {
+  background: linear-gradient(135deg, rgba(230, 126, 34, 0.1) 0%, rgba(211, 84, 0, 0.05) 100%);
+  padding: 18px 20px;
+  border-radius: 2px;
+  border-left: 3px solid #e67e22;
+  font-weight: 500 !important;
+  color: #8b4513 !important;
+  margin-top: 28px !important;
+  text-align: center;
+  font-size: 14px !important;
+  box-shadow: inset 0 0 20px rgba(230, 126, 34, 0.05);
+}
+
+.disclaimer-footer .el-button {
+  width: 100%;
+  padding: 14px 32px;
+  font-size: 16px;
+  font-weight: 500;
+  background: linear-gradient(180deg, #e67e22 0%, #d35400 100%);
+  border: none;
+  border-radius: 2px;
+  color: #fff;
+  letter-spacing: 2px;
+  font-family: 'STKaiti', 'KaiTi', 'SimKaiti', cursive, serif !important;
+  box-shadow: 0 2px 4px rgba(230, 126, 34, 0.3);
+  transition: all 0.3s ease;
+}
+
+.disclaimer-footer .el-button:hover {
+  background: linear-gradient(180deg, #d35400 0%, #a04000 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(230, 126, 34, 0.4);
+}
+
+/* 年龄确认弹窗样式 */
+:deep(.age-dialog) {
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+:deep(.age-dialog .el-dialog__header) {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  padding: 24px 30px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid #fcd34d;
+}
+
+:deep(.age-dialog .el-dialog__title) {
+  color: #92400e !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+}
+
+:deep(.age-dialog .el-dialog__body) {
+  padding: 30px !important;
+  background: #fff;
+}
+
+:deep(.age-dialog .el-dialog__footer) {
+  background: #f9fafb;
+  padding: 20px 30px !important;
+  border-top: 1px solid #e5e7eb;
+}
+
+.age-content {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.age-icon {
+  flex-shrink: 0;
+}
+
+.age-icon .el-icon {
+  font-size: 48px;
+  color: #e67e22;
+}
+
+.age-text {
+  flex: 1;
+}
+
+.age-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 12px 0;
+}
+
+.age-description {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.7;
+  margin: 0 0 16px 0;
+}
+
+.age-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(230, 126, 34, 0.1) 0%, rgba(211, 84, 0, 0.05) 100%);
+  border-left: 3px solid #e67e22;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.age-notice .el-icon {
+  font-size: 18px;
+  color: #e67e22;
+  flex-shrink: 0;
+}
+
+.age-footer {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.age-footer .el-button {
+  min-width: 120px;
+}
+
+@media (max-width: 768px) {
+  :deep(.disclaimer-dialog) {
+    width: 95% !important;
+    margin: 10px auto !important;
+  }
+  
+  :deep(.disclaimer-dialog .el-dialog__header) {
+    padding: 20px 24px !important;
+  }
+  
+  :deep(.disclaimer-dialog .el-dialog__title) {
+    font-size: 20px !important;
+  }
+  
+  .disclaimer-content {
+    padding: 24px 28px;
+  }
+  
+  .disclaimer-icon .el-icon {
+    font-size: 40px;
+  }
+  
+  .disclaimer-title {
+    font-size: 18px !important;
+  }
+  
+  .disclaimer-text p,
+  .disclaimer-text li {
+    font-size: 13px;
+  }
+  
+  .disclaimer-text ul {
+    padding-left: 0;
+  }
+  
+  .disclaimer-text li {
+    margin-bottom: 10px;
+    padding-left: 20px;
+  }
+  
+  .disclaimer-highlight {
+    padding: 14px;
+    font-size: 13px !important;
+  }
+  
+  .disclaimer-footer .el-button {
+    padding: 12px 24px;
+    font-size: 15px;
+  }
 }
 </style>
+

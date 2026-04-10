@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 
 test.describe('Content Generation', () => {
   test.beforeEach(async ({ page }) => {
@@ -90,3 +90,4 @@ test.describe('Content Generation', () => {
     expect(download.suggestedFilename()).toContain('.pdf');
   });
 });
+

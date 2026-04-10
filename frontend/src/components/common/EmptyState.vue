@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="empty-state">
     <el-empty :description="description" :image-size="imageSize">
       <template #image v-if="customImage">
@@ -49,3 +49,4 @@ const handleAction = () => {
   padding: 40px 20px;
 }
 </style>
+

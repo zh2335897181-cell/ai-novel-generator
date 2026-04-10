@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ai-config-page">
     <div class="page-header">
       <div class="header-content">
@@ -936,14 +936,232 @@ watch(() => selectedProvider.value, (newVal) => {
   .header-content {
     flex-direction: column;
     gap: 16px;
+    align-items: stretch;
+  }
+  
+  .header-left {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .title-section h1 {
+    font-size: 20px;
+  }
+  
+  .subtitle {
+    font-size: 13px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .header-actions .el-button {
+    flex: 1;
+    min-width: calc(50% - 6px);
   }
   
   .config-container {
     padding: 0 20px;
+    margin: 20px auto;
+  }
+  
+  .config-main {
+    gap: 16px;
+  }
+  
+  .provider-grid {
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .provider-card {
+    padding: 16px;
+  }
+  
+  .provider-icon {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .provider-info h3 {
+    font-size: 15px;
+  }
+  
+  .provider-info p {
+    font-size: 12px;
+  }
+  
+  /* 关键修复：表单标签上置 */
+  .config-form {
+    padding: 16px;
+  }
+  
+  .config-form :deep(.el-form-item) {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+  }
+  
+  .config-form :deep(.el-form-item__label) {
+    text-align: left !important;
+    float: none !important;
+    display: block;
+    width: 100% !important;
+    padding-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  
+  .config-form :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+    width: 100%;
   }
   
   .api-key-input {
     flex-direction: column;
+    gap: 8px;
+  }
+  
+  .get-key-btn {
+    width: 100%;
+    height: auto;
+    padding: 8px 16px;
+  }
+  
+  .slider-with-value {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .slider-value {
+    align-self: flex-end;
+  }
+  
+  .provider-details {
+    padding: 16px;
+  }
+  
+  .detail-section h4 {
+    font-size: 14px;
+  }
+  
+  .detail-section ul {
+    font-size: 13px;
+  }
+  
+  .detail-section p {
+    font-size: 13px;
+  }
+  
+  .status-content,
+  .tips-content {
+    padding: 12px;
+  }
+  
+  .tip-item {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-header {
+    padding: 12px 16px;
+  }
+  
+  .title-section h1 {
+    font-size: 18px;
+  }
+  
+  .subtitle {
+    font-size: 12px;
+  }
+  
+  .header-actions .el-button {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+  
+  .config-container {
+    padding: 0 16px;
+    margin: 16px auto;
+  }
+  
+  .config-card {
+    border-radius: 12px;
+  }
+  
+  .card-header {
+    font-size: 15px;
+  }
+  
+  .provider-grid {
+    padding: 12px;
+  }
+  
+  .provider-card {
+    flex-direction: column;
+    padding: 12px;
+  }
+  
+  .provider-icon {
+    width: 44px;
+    height: 44px;
+  }
+  
+  .provider-info h3 {
+    font-size: 14px;
+  }
+  
+  .provider-info p {
+    font-size: 11px;
+  }
+  
+  .config-form {
+    padding: 12px;
+  }
+  
+  .config-form :deep(.el-form-item__label) {
+    font-size: 13px;
+    padding-bottom: 6px;
+  }
+  
+  .config-form :deep(.el-input),
+  .config-form :deep(.el-select) {
+    font-size: 14px;
+  }
+  
+  .input-hint {
+    font-size: 11px;
+  }
+  
+  .provider-details {
+    padding: 12px;
+  }
+  
+  .detail-section {
+    margin-bottom: 16px;
+  }
+  
+  .detail-section h4 {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  
+  .detail-section ul {
+    font-size: 12px;
+    padding-left: 16px;
+  }
+  
+  .detail-section li {
+    margin-bottom: 6px;
+  }
+  
+  .detail-section p {
+    font-size: 12px;
   }
 }
 </style>
+

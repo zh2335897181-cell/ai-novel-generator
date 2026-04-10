@@ -1,4 +1,4 @@
-// 小说数据处理 Web Worker
+﻿// 小说数据处理 Web Worker
 // 用于处理大量数据的计算，避免阻塞主线程
 
 self.onmessage = function(e) {
@@ -299,3 +299,4 @@ function generateTimelineData(contents, characters) {
     characterEvents: characters.length
   }
 }
+

@@ -65,6 +65,10 @@ const apiKeyAuth = (req, res, next) => {
       const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
       const decoded = jwt.verify(token, JWT_SECRET);
       req.user = decoded; // 将解码后的用户信息附加到请求对象
+      // 设置 user-id header 供后续权限检查使用
+      if (decoded.userId || decoded.id) {
+        req.headers['user-id'] = decoded.userId || decoded.id;
+      }
       return next();
     } catch (error) {
       console.log('[Auth Debug] Invalid JWT token:', error.message);

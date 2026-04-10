@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="novel-detail">
     <!-- 骨架屏加载状态 -->
     <div v-if="loading" class="skeleton-container">
@@ -471,6 +471,14 @@
           
           <!-- 生成输入 -->
           <div class="generate-box">
+            <!-- 内容合规提示 -->
+            <div class="content-warning-banner">
+              <el-icon><Warning /></el-icon>
+              <div class="warning-text">
+                <p><strong>内容安全提示</strong></p>
+                <p>严禁生成色情、暴力、恐怖、侵权或违法违规内容。AI生成内容需经人工审核后使用。</p>
+              </div>
+            </div>
             <el-form :model="generateForm" label-width="80px" style="width: 100%;">
               <el-form-item label="剧情指令" style="width: 100%;">
                 <div class="plot-input-wrapper" style="width: 100%;">
@@ -548,21 +556,20 @@
             </div>
           </div>
 
-          <!-- 内容展示 - 虚拟滚动 -->
+          <!-- 内容展示 -->
           <div class="story-list">
-            <RecycleScroller
-              v-if="contents.length > 0"
-              class="scroller"
-              :items="contents"
-              :item-size="200"
-              key-field="id"
-              v-slot="{ item: content, index }"
-            >
-              <el-card class="story-card">
+            <div v-if="contents.length > 0" class="story-list-container">
+              <el-card 
+                v-for="(content, index) in contents" 
+                :key="content.id"
+                class="story-card" 
+                :class="{ 'expanded': isChapterExpanded(content.id) }"
+              >
                 <div class="story-header">
-                  <div class="story-title-section">
+                  <div class="story-title-section" @click="toggleChapterExpand(content.id)">
                     <span class="chapter-badge">第 {{ content.chapter_number || (contents.length - index) }} 章</span>
                     <span v-if="content.chapter_title" class="chapter-title-text">{{ content.chapter_title }}</span>
+                    <el-icon class="expand-icon"><ArrowDown v-if="!isChapterExpanded(content.id)" /><ArrowUp v-else /></el-icon>
                   </div>
                   <span class="story-time">{{ formatDate(content.created_at) }}</span>
                 </div>
@@ -574,15 +581,27 @@
                   <span class="outline-text">{{ content.chapter_outline }}</span>
                 </div>
                 
-                <div class="story-content">{{ content.content }}</div>
+                <div class="story-content-wrapper" :class="{ 'expanded': isChapterExpanded(content.id) }">
+                  <div class="story-content">{{ content.content }}</div>
+                </div>
                 
                 <!-- 字数统计 -->
                 <div v-if="content.word_count" class="word-count-info">
                   <el-icon><Reading /></el-icon>
                   <span>{{ content.word_count }} 字</span>
+                  <el-button 
+                    v-if="!isChapterExpanded(content.id)" 
+                    text 
+                    type="primary" 
+                    size="small" 
+                    class="view-full-btn"
+                    @click="toggleChapterExpand(content.id)"
+                  >
+                    查看完整内容
+                  </el-button>
                 </div>
               </el-card>
-            </RecycleScroller>
+            </div>
             <el-empty v-else description="还没有内容，开始生成吧！" />
           </div>
         </div>
@@ -808,7 +827,7 @@
               </div>
             </div>
             <div class="poster-footer">
-              <div class="poster-logo">AI小说生成系统</div>
+              <div class="poster-logo">一点纸墨</div>
               <div class="poster-slogan">让AI帮你创作精彩故事</div>
             </div>
             <div class="poster-decoration"></div>
@@ -849,12 +868,10 @@
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar } from '@element-plus/icons-vue'
+import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
 import { Document as DocxDocument, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } from 'docx'
-import { RecycleScroller } from 'vue-virtual-scroller'
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import api from '../api/novel'
 import { useAIConfigStore } from '../stores/aiConfig'
 import CharacterGrowthChart from '../components/CharacterGrowthChart.vue'
@@ -944,6 +961,23 @@ const posterContainer = ref(null)
 // 时间线管理相关
 const showTimeline = ref(false)
 const timelineEvents = ref([])
+
+// 章节展开状态
+const expandedChapters = ref(new Set())
+
+// 检查章节是否展开
+const isChapterExpanded = (chapterId) => {
+  return expandedChapters.value.has(chapterId)
+}
+
+// 切换章节展开状态
+const toggleChapterExpand = (chapterId) => {
+  if (expandedChapters.value.has(chapterId)) {
+    expandedChapters.value.delete(chapterId)
+  } else {
+    expandedChapters.value.add(chapterId)
+  }
+}
 
 // 头像颜色映射
 const avatarColors = [
@@ -1674,7 +1708,7 @@ const exportPdf = async () => {
   
   // 添加元信息
   doc.setFontSize(12)
-  doc.text(`作者：AI小说生成系统`, 105, 45, { align: 'center' })
+  doc.text(`作者：一点纸墨`, 105, 45, { align: 'center' })
   doc.text(`总字数：${totalWordCount.value} 字 | 章节数：${contents.value.length} 章`, 105, 52, { align: 'center' })
   
   let yPosition = 70
@@ -1735,7 +1769,7 @@ const exportDocx = async () => {
   // 元信息
   paragraphs.push(
     new Paragraph({
-      text: `作者：AI小说生成系统`,
+      text: `作者：一点纸墨`,
       alignment: AlignmentType.CENTER,
       spacing: { after: 100 }
     }),
@@ -1802,7 +1836,7 @@ const exportDocx = async () => {
 
 const generateTxtContent = () => {
   let content = `${novel.value?.title || '未命名小说'}\n`
-  content += `作者：AI小说生成系统\n`
+  content += `作者：一点纸墨\n`
   content += `总字数：${totalWordCount.value} 字\n`
   content += `章节数：${contents.value.length} 章\n`
   content += `\n${'='.repeat(50)}\n\n`
@@ -1818,7 +1852,7 @@ const generateTxtContent = () => {
 
 const generateMdContent = () => {
   let content = `# ${novel.value?.title || '未命名小说'}\n\n`
-  content += `> 作者：AI小说生成系统  \n`
+  content += `> 作者：一点纸墨  \n`
   content += `> 总字数：${totalWordCount.value} 字  \n`
   content += `> 章节数：${contents.value.length} 章  \n\n`
   content += `---\n\n`
@@ -1850,7 +1884,7 @@ const generateHtmlContent = () => {
 <body>
   <h1>${novel.value?.title || '未命名小说'}</h1>
   <div class="meta">
-    作者：AI小说生成系统<br>
+    作者：一点纸墨<br>
     总字数：${totalWordCount.value} 字 | 章节数：${contents.value.length} 章
   </div>
 `
@@ -2207,6 +2241,37 @@ watch(() => route.params.id, (newId, oldId) => {
 .generate-box:hover {
   box-shadow: var(--shadow-xl);
   transform: translateY(-2px);
+}
+
+/* 内容合规提示 */
+.content-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.04) 100%);
+  border-left: 3px solid #ef4444;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.content-warning-banner .el-icon {
+  font-size: 20px;
+  color: #ef4444;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.warning-text p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7f1d1d;
+}
+
+.warning-text p strong {
+  color: #991b1b;
+  font-weight: 600;
 }
 
 :deep(.el-form-item__content) {
@@ -3535,4 +3600,637 @@ watch(() => route.params.id, (newId, oldId) => {
   justify-content: center;
   width: 100%;
 }
+
+/* 章节展开/收起样式 */
+.story-title-section {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.3s ease;
+  padding: 8px 0;
+}
+
+.story-title-section:hover {
+  opacity: 0.8;
+}
+
+.expand-icon {
+  margin-left: auto;
+  transition: transform 0.3s ease;
+  color: var(--el-color-primary);
+}
+
+.story-content-wrapper {
+  max-height: 120px;
+  overflow: hidden;
+  transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.story-content-wrapper::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, var(--el-bg-color));
+  transition: opacity 0.3s ease;
+  opacity: 1;
+}
+
+.story-content-wrapper.expanded {
+  max-height: 5000px;
+}
+
+.story-content-wrapper.expanded::after {
+  opacity: 0;
+}
+
+.story-card {
+  transition: all 0.3s ease;
+}
+
+.story-card.expanded {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.view-full-btn {
+  margin-left: auto;
+}
+
+.word-count-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 列表容器样式 */
+.story-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scroller {
+  height: 100%;
+}
+
+/* ===== 移动端优化 ===== */
+@media (max-width: 768px) {
+  /* 确保容器不溢出 */
+  .novel-detail {
+    width: 100%;
+    overflow-x: hidden;
+  }
+  
+  /* 容器布局改为垂直 */
+  .el-container {
+    flex-direction: column !important;
+    width: 100%;
+  }
+  
+  /* 侧边栏改为顶部折叠菜单 */
+  .el-aside {
+    width: 100% !important;
+    height: auto !important;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  
+  .sidebar {
+    padding: 12px 16px;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  
+  .breadcrumb-sidebar {
+    background: rgba(255, 255, 255, 0.95);
+  }
+  
+  /* Logo区域 */
+  .logo-section {
+    margin-bottom: 10px !important;
+  }
+  
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .logo-icon .el-icon {
+    font-size: 18px !important;
+  }
+  
+  .logo-text h3 {
+    font-size: 15px;
+  }
+  
+  /* 面包屑 */
+  .breadcrumb-header {
+    margin-bottom: 10px;
+  }
+  
+  .back-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  
+  .el-breadcrumb {
+    font-size: 11px;
+  }
+  
+  /* 小说标题 */
+  .novel-title {
+    font-size: 16px;
+    margin: 10px 0;
+  }
+  
+  /* 菜单 */
+  .breadcrumb-menu {
+    font-size: 13px;
+  }
+  
+  .el-sub-menu__title {
+    padding: 0 10px !important;
+    height: 40px;
+    line-height: 40px;
+    font-size: 13px;
+  }
+  
+  .el-menu-item {
+    padding: 0 10px !important;
+    height: 36px;
+    line-height: 36px;
+    font-size: 12px;
+  }
+  
+  .menu-tag,
+  .menu-badge {
+    font-size: 11px;
+    transform: scale(0.9);
+  }
+  
+  /* 菜单内容 */
+  .world-detail-content,
+  .character-list-menu,
+  .chapter-list-menu,
+  .item-list-menu,
+  .location-list-menu {
+    padding: 8px;
+    font-size: 12px;
+  }
+  
+  .world-detail-content p,
+  .character-menu-item,
+  .chapter-menu-item,
+  .item-menu-item,
+  .location-menu-item {
+    font-size: 12px;
+  }
+  
+  .menu-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .menu-actions .el-button {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+  
+  /* 主内容区域 */
+  .el-main {
+    padding: 12px 10px;
+    width: 100% !important;
+    max-width: 100%;
+  }
+  
+  .content-area {
+    padding: 16px 12px 32px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .content-area h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  
+  /* 生成框 */
+  .generate-box {
+    padding: 12px;
+    border-radius: 12px;
+  }
+  
+  .generate-box .el-form {
+    width: 100%;
+  }
+  
+  /* 移动端表单标签上置 */
+  .generate-box .el-form-item {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .generate-box .el-form-item__label {
+    font-size: 13px;
+    padding-bottom: 8px;
+    display: block !important;
+    width: 100% !important;
+    text-align: left !important;
+    float: none !important;
+    margin-left: 0 !important;
+  }
+  
+  .generate-box .el-form-item__content {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+  
+  /* 剧情输入框优化 */
+  .plot-input-wrapper {
+    position: relative;
+    width: 100% !important;
+    max-width: 100%;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box;
+  }
+  
+  .plot-input-wrapper .el-textarea {
+    width: 100% !important;
+    max-width: 100%;
+    order: 1;
+  }
+  
+  .plot-input-wrapper .el-textarea__inner {
+    min-height: 120px !important;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 12px;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  
+  /* AI建议按钮改为下方全宽 - 使用更高优先级 */
+  .generate-box .plot-input-wrapper .ai-suggest-btn {
+    position: static !important;
+    width: 100% !important;
+    margin-top: 10px !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    order: 2;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    right: auto !important;
+    bottom: auto !important;
+    background: linear-gradient(135deg, #fb7185 0%, #38bdf8 100%) !important;
+    color: white !important;
+    border-radius: 8px !important;
+  }
+  
+  .generate-box .plot-input-wrapper .ai-suggest-btn:hover {
+    background: linear-gradient(135deg, #f87171 0%, #0ea5e9 100%) !important;
+    color: white !important;
+  }
+  
+  .ai-suggest-btn .el-icon {
+    font-size: 16px;
+  }
+  
+  /* 字数滑块优化 */
+  .el-slider {
+    margin: 12px 0;
+    padding: 0 4px;
+    width: 100% !important;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .el-slider :deep(.el-slider__runway) {
+    margin: 16px 0;
+    width: 100%;
+  }
+  
+  .el-slider :deep(.el-slider__marks-text) {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  
+  .word-count-label {
+    font-size: 13px;
+    margin-top: 8px;
+    display: block;
+    text-align: center;
+    font-weight: 600;
+    color: #fb7185;
+  }
+  
+  /* 生成按钮 */
+  .generate-box .el-button--primary {
+    width: 100%;
+    padding: 14px 20px;
+    font-size: 15px;
+    margin-top: 16px;
+  }
+  
+  /* 建议面板 */
+  .suggestions-panel {
+    margin-top: 10px;
+    border-radius: 10px;
+  }
+  
+  .suggestions-header {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .suggestion-item {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .suggestion-text {
+    font-size: 12px;
+  }
+  
+  /* 流式输出 */
+  .streaming-content {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 10px;
+  }
+  
+  .streaming-header {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  
+  .streaming-text {
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  
+  /* 章节卡片 */
+  .story-list {
+    margin-top: 16px;
+  }
+  
+  .story-card {
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+  
+  .story-header {
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  
+  .story-title-section {
+    flex: 1 1 100%;
+    cursor: pointer;
+  }
+  
+  .chapter-badge {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+  
+  .chapter-title-text {
+    font-size: 13px;
+  }
+  
+  .expand-icon {
+    font-size: 14px;
+  }
+  
+  .story-time {
+    font-size: 11px;
+  }
+  
+  .chapter-outline-box {
+    padding: 8px;
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+  
+  .story-content-wrapper {
+    max-height: 200px;
+  }
+  
+  .story-content {
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  
+  .word-count-info {
+    font-size: 11px;
+    margin-top: 8px;
+  }
+  
+  .view-full-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+  
+  /* 对话框 */
+  .el-dialog {
+    width: 95% !important;
+    margin: 10px auto !important;
+    border-radius: 12px !important;
+  }
+  
+  .el-dialog__header {
+    padding: 14px 16px !important;
+  }
+  
+  .el-dialog__title {
+    font-size: 15px !important;
+  }
+  
+  .el-dialog__body {
+    padding: 16px !important;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  
+  .el-dialog__footer {
+    padding: 10px 16px !important;
+  }
+  
+  /* 表单对话框 */
+  .el-dialog .el-form-item {
+    margin-bottom: 14px;
+  }
+  
+  .el-dialog .el-form-item__label {
+    font-size: 13px;
+    padding-bottom: 6px;
+  }
+  
+  .el-dialog .el-input,
+  .el-dialog .el-textarea,
+  .el-dialog .el-select {
+    font-size: 14px;
+  }
+  
+  /* Banner */
+  .guest-restriction-banner,
+  .unlocked-banner {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  /* 骨架屏 */
+  .skeleton-sidebar {
+    padding: 12px;
+  }
+  
+  .skeleton-main {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* 更小屏幕的进一步优化 */
+  .sidebar {
+    padding: 10px 12px;
+  }
+  
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .logo-icon .el-icon {
+    font-size: 16px !important;
+  }
+  
+  .logo-text h3 {
+    font-size: 14px;
+  }
+  
+  .novel-title {
+    font-size: 15px;
+  }
+  
+  .el-sub-menu__title {
+    height: 36px;
+    line-height: 36px;
+    font-size: 12px;
+  }
+  
+  .el-menu-item {
+    height: 32px;
+    line-height: 32px;
+    font-size: 11px;
+  }
+  
+  .el-main {
+    padding: 10px 8px;
+  }
+  
+  .content-area {
+    padding: 12px 10px 24px;
+  }
+  
+  .content-area h3 {
+    font-size: 15px;
+  }
+  
+  /* 生成框小屏优化 */
+  .generate-box {
+    padding: 14px;
+  }
+  
+  .generate-box .el-form-item {
+    margin-bottom: 18px;
+  }
+  
+  .generate-box .el-form-item__label {
+    font-size: 14px;
+    padding-bottom: 10px;
+    font-weight: 600;
+  }
+  
+  .plot-input-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .plot-input-wrapper .el-textarea__inner {
+    min-height: 140px !important;
+    font-size: 15px;
+    padding: 14px;
+  }
+  
+  .generate-box .plot-input-wrapper .ai-suggest-btn {
+    position: static !important;
+    width: 100% !important;
+    padding: 12px 20px !important;
+    font-size: 15px !important;
+    margin-top: 12px !important;
+    right: auto !important;
+    bottom: auto !important;
+  }
+  
+  .ai-suggest-btn .el-icon {
+    font-size: 18px;
+  }
+  
+  .el-slider {
+    margin: 16px 0;
+    padding: 0 6px;
+  }
+  
+  .el-slider :deep(.el-slider__runway) {
+    margin: 20px 0;
+  }
+  
+  .word-count-label {
+    font-size: 14px;
+    margin-top: 10px;
+  }
+  
+  .generate-box .el-button--primary {
+    padding: 16px 24px;
+    font-size: 16px;
+    margin-top: 20px;
+  }
+  
+  .story-card {
+    padding: 10px;
+  }
+  
+  .chapter-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+  
+  .story-content {
+    font-size: 12px;
+  }
+  
+  .el-dialog {
+    width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    height: 100vh;
+  }
+  
+  .el-dialog__body {
+    max-height: calc(100vh - 100px);
+  }
+}
+
 </style>
+

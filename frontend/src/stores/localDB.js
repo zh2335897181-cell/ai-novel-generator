@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 本地数据库封装 - 基于 localStorage
  * 替代原有的 MySQL 数据存储
  */
@@ -430,3 +430,4 @@ export const dataManager = {
     return total
   }
 }
+

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI Prompt 构建工具
  * 从后端 aiClient.js 迁移至前端
  */
@@ -313,3 +313,4 @@ export function parseAIJSON(result) {
     return null
   }
 }
+

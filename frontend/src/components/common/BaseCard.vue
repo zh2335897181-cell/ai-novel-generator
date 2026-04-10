@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-card :class="['base-card', { 'is-hoverable': hoverable }]" :shadow="shadow">
     <template #header v-if="title || $slots.header">
       <slot name="header">
@@ -52,3 +52,4 @@ defineProps({
   color: #303133;
 }
 </style>
+

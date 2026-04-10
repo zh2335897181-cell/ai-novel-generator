@@ -1,4 +1,4 @@
-import { createPinia } from 'pinia';
+﻿import { createPinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
 import ElementPlus from 'element-plus';
 
@@ -65,3 +65,4 @@ export const mockLocalStorage = () => {
     clear: () => { Object.keys(store).forEach(key => delete store[key]); }
   };
 };
+

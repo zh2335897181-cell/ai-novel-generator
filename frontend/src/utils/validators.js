@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 表单验证工具函数
  */
 
@@ -109,3 +109,4 @@ export const custom = (validator, message) => {
     trigger: 'blur'
   };
 };
+

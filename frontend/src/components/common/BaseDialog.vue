@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-dialog
     v-model="visible"
     :title="title"
@@ -77,3 +77,4 @@ const handleCancel = () => {
   emit('update:modelValue', false);
 };
 </script>
+

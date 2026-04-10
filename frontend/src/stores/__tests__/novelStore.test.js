@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+﻿import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useNovelStore } from '../novelStore';
 
@@ -77,3 +77,4 @@ describe('Novel Store', () => {
     expect(store.loading).toBe(false);
   });
 });
+

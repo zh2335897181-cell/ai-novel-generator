@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="loading-state">
     <el-skeleton v-if="type === 'skeleton'" :rows="rows" animated />
     <div v-else-if="type === 'spinner'" class="spinner-container">
@@ -56,3 +56,4 @@ defineProps({
   font-size: 14px;
 }
 </style>
+

@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+﻿import { ref, computed } from 'vue';
 import { useNovelStore } from '../stores/novelStore';
 import { ElMessage } from 'element-plus';
 
@@ -85,3 +85,4 @@ export function useNovel() {
     addNewCharacter
   };
 }
+

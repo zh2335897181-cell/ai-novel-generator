@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   novelDB, worldDB, characterDB, minorCharacterDB,
@@ -256,3 +256,4 @@ export const useNovelStore = defineStore('novel', () => {
     addChapterOutlines
   }
 })
+

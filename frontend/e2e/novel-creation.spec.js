@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 
 test.describe('Novel Creation and Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -76,3 +76,4 @@ test.describe('Novel Creation and Management', () => {
     await expect(novels.first()).toContainText('Fantasy');
   });
 });
+

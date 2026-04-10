@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <!-- 游客倒计时警告 -->
   <div v-if="isGuest && remainingMs > 0" class="guest-timer-banner">
     <el-icon><Timer /></el-icon>
@@ -16,7 +16,7 @@
             <el-icon :size="32"><Reading /></el-icon>
           </div>
           <div class="logo-text">
-            <h1>AI小说生成系统</h1>
+            <h1>一点纸墨</h1>
             <p class="logo-subtitle">用 AI 打造有世界观、有角色成长的长篇小说</p>
           </div>
         </div>
@@ -684,40 +684,12 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .header-content {
-    padding: 20px 24px;
+    padding: 16px 20px;
     flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
+    gap: 12px;
+    align-items: stretch;
   }
   
-  .logo-section h1 {
-    font-size: 22px;
-  }
-  
-  .header-actions {
-    width: 100%;
-    justify-content: stretch;
-  }
-  
-  .header-actions .el-button {
-    flex: 1;
-  }
-  
-  .main-content {
-    padding: 32px 24px;
-  }
-  
-  .novel-grid {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-  
-  .novel-card {
-    padding: 24px;
-  }
-}
-
-@media (max-width: 480px) {
   .logo-section {
     gap: 12px;
   }
@@ -726,13 +698,151 @@ onUnmounted(() => {
     font-size: 20px;
   }
   
+  .logo-subtitle {
+    font-size: 12px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .header-actions .el-button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+  
+  .header-actions .el-dropdown {
+    flex: 1 1 calc(50% - 4px);
+  }
+  
+  .header-actions .el-dropdown .el-button {
+    width: 100%;
+  }
+  
+  .main-content {
+    padding: 24px 20px;
+  }
+  
+  .novel-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .novel-card {
+    padding: 20px;
+  }
+  
   .card-icon {
-    width: 60px;
-    height: 60px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
   }
   
   .novel-card h3 {
     font-size: 18px;
+    margin-bottom: 16px;
+  }
+  
+  .card-subtitle {
+    font-size: 12px;
+    margin: -8px 0 16px 0;
+  }
+  
+  /* 移动端对话框优化 */
+  .el-dialog {
+    width: 90% !important;
+  }
+  
+  /* 游客计时横幅移动端优化 */
+  .guest-timer-banner {
+    padding: 10px 16px;
+    font-size: 13px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .guest-timer-banner .el-button {
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-content {
+    padding: 12px 16px;
+  }
+  
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .logo-icon .el-icon {
+    font-size: 20px !important;
+  }
+  
+  .logo-section h1 {
+    font-size: 18px;
+  }
+  
+  .logo-subtitle {
+    display: none;
+  }
+  
+  .header-actions .el-button {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  
+  .main-content {
+    padding: 16px 12px;
+  }
+  
+  .novel-card {
+    padding: 16px;
+  }
+  
+  .card-icon {
+    width: 56px;
+    height: 56px;
+  }
+  
+  .novel-card h3 {
+    font-size: 16px;
+  }
+  
+  .card-footer {
+    font-size: 12px;
+  }
+  
+  /* 小屏幕对话框全屏 */
+  .el-dialog {
+    width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    max-height: 100vh;
+  }
+  
+  .el-dialog__body {
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+  
+  /* 删除确认对话框 */
+  .delete-confirm-content {
+    padding: 16px 0;
+  }
+  
+  .delete-confirm-content p {
+    font-size: 14px;
+  }
+  
+  .delete-warning {
+    font-size: 12px !important;
   }
 }
 
@@ -829,3 +939,4 @@ onUnmounted(() => {
   padding-top: 96px;
 }
 </style>
+

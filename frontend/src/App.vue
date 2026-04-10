@@ -1,12 +1,16 @@
-<template>
+﻿<template>
   <div id="app">
     <router-view />
+    <CookieConsent />
+    <FeedbackDialog />
   </div>
 </template>
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
 import { useUserStore } from './stores/user'
+import CookieConsent from './components/CookieConsent.vue'
+import FeedbackDialog from './components/FeedbackDialog.vue'
 
 const userStore = useUserStore()
 
@@ -448,6 +452,36 @@ body {
     --space-xl: 24px;
     --space-2xl: 32px;
   }
+  
+  /* 移动端字体调整 */
+  body {
+    font-size: 14px;
+  }
+  
+  /* 移动端对话框全屏 */
+  .el-dialog {
+    width: 95% !important;
+    margin: 20px auto !important;
+  }
+  
+  .el-dialog__body {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  /* 小屏幕对话框完全全屏 */
+  .el-dialog {
+    width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    height: 100vh;
+  }
+  
+  .el-dialog__body {
+    max-height: calc(100vh - 120px);
+  }
 }
 
 /* ===== Dialog z-index override for relationship graph ===== */
@@ -463,3 +497,4 @@ body {
   z-index: 9998 !important;
 }
 </style>
+
