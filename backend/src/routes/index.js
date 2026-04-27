@@ -54,7 +54,7 @@ router.post('/ai/chat', async (req, res) => {
 
     const apiKey = aiConfig?.apiKey || process.env.AI_API_KEY
     const baseURL = aiConfig?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1'
-    const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-chat'
+    const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-v4-flash'
 
     if (!apiKey) {
       return res.status(400).json({ message: '请先配置AI API Key' })
@@ -70,7 +70,8 @@ router.post('/ai/chat', async (req, res) => {
         model,
         messages,
         temperature,
-        max_tokens: 4000
+        max_tokens: 4000,
+        response_format: { type: 'text' }
       })
     })
 
@@ -94,7 +95,7 @@ router.post('/ai/chat-stream', async (req, res) => {
 
     const apiKey = aiConfig?.apiKey || process.env.AI_API_KEY
     const baseURL = aiConfig?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1'
-    const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-chat'
+    const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-v4-flash'
 
     if (!apiKey) {
       return res.status(400).json({ message: '请先配置AI API Key' })
@@ -116,7 +117,8 @@ router.post('/ai/chat-stream', async (req, res) => {
         messages,
         temperature,
         max_tokens: 4000,
-        stream: true
+        stream: true,
+        response_format: { type: 'text' }
       })
     })
 

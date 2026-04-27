@@ -101,20 +101,28 @@
     </div>
 
     <el-container>
-      <el-aside width="380px">
+      <el-aside :width="sidebarWidth" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
         <div class="sidebar breadcrumb-sidebar">
           <!-- Logo区域，点击跳转到宣传页面 -->
           <div class="logo-section" @click="goToLanding" style="cursor: pointer; margin-bottom: 16px;">
             <div class="logo-icon">
               <el-icon :size="28"><Reading /></el-icon>
             </div>
-            <div class="logo-text">
+            <div class="logo-text" v-show="!isSidebarCollapsed">
               <h3>AI小说生成</h3>
             </div>
           </div>
 
+          <!-- 侧边栏折叠按钮（桌面端） -->
+          <div class="sidebar-toggle-btn" v-if="!isMobile && !isTablet" @click="toggleSidebar">
+            <el-icon :size="16">
+              <ArrowRight v-if="isSidebarCollapsed" />
+              <ArrowLeft v-else />
+            </el-icon>
+          </div>
+
           <!-- 返回按钮和面包屑 -->
-          <div class="breadcrumb-header">
+          <div class="breadcrumb-header" v-show="!isSidebarCollapsed">
             <el-button text @click="$router.push('/novels')" class="back-btn">
               <el-icon><ArrowLeft /></el-icon>
               <span>返回列表</span>
@@ -125,10 +133,11 @@
             </el-breadcrumb>
           </div>
 
-          <h2 class="novel-title">{{ novel?.title }}</h2>
+          <h2 class="novel-title" v-show="!isSidebarCollapsed">{{ novel?.title }}</h2>
 
           <!-- 面包屑导航式功能菜单 -->
           <el-menu
+            v-show="!isSidebarCollapsed"
             :default-active="activeMenu"
             class="breadcrumb-menu"
             @select="handleMenuSelect"
@@ -577,15 +586,17 @@
               </el-form-item>
             </el-form>
             
-            <el-tooltip content="根据剧情指令AI生成下一章内容" placement="bottom">
+            <el-tooltip content="根据剧情指令AI生成下一章内容 (Ctrl+S)" placement="bottom">
               <el-button 
                 type="primary" 
                 @click="generateStoryStream" 
                 :loading="generating"
                 style="width: 100%;"
+                data-shortcut="generate"
               >
                 <el-icon><MagicStick /></el-icon>
                 {{ generating ? '生成中...' : '开始生成' }}
+                <kbd class="btn-shortcut">Ctrl+S</kbd>
               </el-button>
             </el-tooltip>
 
@@ -908,7 +919,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
+import { ref, onMounted, computed, nextTick, watch, onUnmounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown, Menu, Sunny, Moon, FullScreen } from '@element-plus/icons-vue'
@@ -924,6 +935,7 @@ import { useThemeStore } from '../stores/theme'
 import { useNovelWorker } from '../composables/useNovelWorker'
 import TimelineManager from '../components/TimelineManager.vue'
 import MobileNavBar from '../components/layout/MobileNavBar.vue'
+import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts'
 
 const aiConfigStore = useAIConfigStore()
 const userStore = useUserStore()
@@ -934,6 +946,20 @@ const { isProcessing: workerProcessing, result: workerResult, analyzeText, calcu
 const windowWidth = ref(window.innerWidth)
 const isMobile = computed(() => windowWidth.value <= 768)
 const isTablet = computed(() => windowWidth.value > 768 && windowWidth.value <= 1024)
+
+// 侧边栏折叠状态（桌面端）
+const isSidebarCollapsed = ref(false)
+const sidebarWidth = computed(() => {
+  if (isMobile.value) return '100%'
+  if (isTablet.value) return isSidebarCollapsed.value ? '0' : '320px'
+  return isSidebarCollapsed.value ? '60px' : '380px'
+})
+
+// 切换侧边栏
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
+  ElMessage.info(isSidebarCollapsed.value ? '侧边栏已收起' : '侧边栏已展开')
+}
 
 // 移动端菜单状态
 const showMobileMenu = ref(false)
@@ -2012,6 +2038,10 @@ const generateHtmlContent = () => {
   return content
 }
 
+// 注入命令回调注册函数
+const registerCommandCallbacks = inject('registerCommandCallbacks', null)
+const unregisterCommandCallbacks = inject('unregisterCommandCallbacks', null)
+
 onMounted(() => {
   loadDetail()
   
@@ -2024,12 +2054,34 @@ onMounted(() => {
       checkGuestTimer()
     }, 10000)
   }
+  
+  // 注册快捷键命令回调
+  if (registerCommandCallbacks) {
+    registerCommandCallbacks({
+      onGenerate: generateStoryStream,
+      onShowWorldDialog: () => { showWorldDialog.value = true },
+      onShowCharacterDialog: () => { showCharacterDialog.value = true },
+      onShowChapterDialog: () => { showChapterDialog.value = true },
+      onShowTimeline: () => { showTimeline.value = true },
+      onToggleSidebar: toggleSidebar,
+      onToggleImmersive: toggleImmersiveMode,
+      onExportDocx: exportDocx,
+      onExportTxt: exportTxt,
+      onExportMd: exportMd,
+      onShare: () => { showPosterDialog.value = true }
+    })
+  }
 })
 
 // 清理计时器
 onUnmounted(() => {
   if (guestTimer) {
     clearInterval(guestTimer)
+  }
+  
+  // 取消注册命令回调
+  if (unregisterCommandCallbacks) {
+    unregisterCommandCallbacks()
   }
 })
 
@@ -2069,9 +2121,51 @@ watch(() => route.params.id, (newId, oldId) => {
   backdrop-filter: blur(18px);
   padding: 28px;
   overflow-y: auto;
+  overflow-x: hidden;
   box-shadow: 8px 0 28px rgba(148, 163, 184, 0.32);
   border-right: 1px solid rgba(255, 255, 255, 0.9);
-  transition: all var(--transition-base);
+  transition: width var(--transition-base), padding var(--transition-base);
+  position: relative;
+}
+
+/* 侧边栏折叠按钮 */
+.sidebar-toggle-btn {
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 48px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-fast);
+  z-index: 10;
+  color: var(--text-secondary);
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--primary);
+  color: white;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* 侧边栏折叠状态 */
+.el-aside.sidebar-collapsed {
+  padding: 20px 12px;
+}
+
+.el-aside.sidebar-collapsed .logo-section {
+  justify-content: center;
+}
+
+.el-aside.sidebar-collapsed .logo-icon {
+  margin-right: 0;
 }
 
 .sidebar h2 {
@@ -2349,6 +2443,23 @@ watch(() => route.params.id, (newId, oldId) => {
 .generate-box:hover {
   box-shadow: var(--shadow-xl);
   transform: translateY(-2px);
+}
+
+/* 按钮快捷键提示 */
+.btn-shortcut {
+  margin-left: 8px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: inherit;
+}
+
+.el-button--primary .btn-shortcut {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /* 内容合规提示 */

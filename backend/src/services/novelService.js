@@ -939,7 +939,7 @@ ${lastChapter ? `第${lastChapter.chapter_number || 1}章：${lastChapter.chapte
       // 调用AI生成建议
       const apiKey = aiConfig?.apiKey || process.env.AI_API_KEY;
       const baseURL = aiConfig?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-      const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-chat';
+      const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
 
       const response = await fetch(`${baseURL}/chat/completions`, {
         method: 'POST',

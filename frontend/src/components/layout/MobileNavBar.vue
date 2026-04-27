@@ -26,7 +26,7 @@
 import { computed } from 'vue'
 import { 
   Reading, Document, User, Setting, 
-  Menu, Home, MagicStick 
+  Menu, House, MagicStick 
 } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -39,7 +39,7 @@ const emit = defineEmits(['navigate', 'select'])
 
 // 默认导航项
 const defaultNavItems = [
-  { key: 'home', label: '首页', icon: Home, path: '/' },
+  { key: 'home', label: '首页', icon: House, path: '/' },
   { key: 'novels', label: '小说', icon: Reading, path: '/novels' },
   { key: 'generate', label: '生成', icon: MagicStick, path: null },
   { key: 'settings', label: '设置', icon: Setting, path: '/ai-config' }

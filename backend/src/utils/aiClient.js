@@ -5,7 +5,7 @@ class AIClient {
     // 从请求中获取配置，如果没有则使用环境变量
     const apiKey = config?.apiKey || process.env.AI_API_KEY;
     const baseURL = config?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = config?.model || process.env.AI_MODEL || 'deepseek-chat';
+    const model = config?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
 
     if (!apiKey) {
       throw new Error('请先配置AI API Key');
@@ -18,7 +18,8 @@ class AIClient {
           model: model,
           messages: messages,
           temperature: temperature,
-          max_tokens: 2000
+          max_tokens: 2000,
+          response_format: { type: 'text' }
         },
         {
           headers: {
@@ -38,7 +39,7 @@ class AIClient {
   async chatStream(messages, temperature = 0.7, config, onChunk) {
     const apiKey = config?.apiKey || process.env.AI_API_KEY;
     const baseURL = config?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = config?.model || process.env.AI_MODEL || 'deepseek-chat';
+    const model = config?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
 
     if (!apiKey) {
       throw new Error('请先配置AI API Key');
@@ -52,7 +53,8 @@ class AIClient {
           messages: messages,
           temperature: temperature,
           max_tokens: 2000,
-          stream: true
+          stream: true,
+          response_format: { type: 'text' }
         },
         {
           headers: {

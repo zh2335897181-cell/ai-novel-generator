@@ -162,7 +162,7 @@ DB_PASSWORD=${{MYSQLPASSWORD}}
 DB_NAME=${{MYSQLDATABASE}}
 AI_API_KEY=sk-your-api-key-here
 AI_BASE_URL=https://api.deepseek.com/v1
-AI_MODEL=deepseek-chat
+AI_MODEL=deepseek-v4-flash
 ```
 
 > 💡 Railway 会自动注入 MySQL 连接信息，使用 `${{变量名}}` 引用

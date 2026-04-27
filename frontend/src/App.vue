@@ -3,19 +3,99 @@
     <router-view />
     <CookieConsent />
     <FeedbackDialog />
+    <CommandPalette v-model:visible="commandPaletteVisible" @execute="handleCommandExecute" />
   </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, provide, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from './stores/user'
+import { useThemeStore } from './stores/theme'
 import CookieConsent from './components/CookieConsent.vue'
 import FeedbackDialog from './components/FeedbackDialog.vue'
+import CommandPalette from './components/CommandPalette.vue'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 
 const userStore = useUserStore()
+const themeStore = useThemeStore()
+const router = useRouter()
 
-// 键盘快捷键监听
-const handleKeyDown = (e) => {
+// 命令面板状态
+const commandPaletteVisible = ref(false)
+
+// 当前页面命令执行回调
+const currentPageCallbacks = ref({})
+
+// 提供命令执行回调注册机制
+provide('registerCommandCallbacks', (callbacks) => {
+  currentPageCallbacks.value = callbacks
+})
+
+provide('unregisterCommandCallbacks', () => {
+  currentPageCallbacks.value = {}
+})
+
+// 打开命令面板
+const openCommandPalette = () => {
+  commandPaletteVisible.value = true
+}
+
+// 处理命令执行
+const handleCommandExecute = (command) => {
+  const callbacks = currentPageCallbacks.value
+  
+  switch (command) {
+    case 'generate':
+      callbacks.onGenerate?.()
+      break
+    case 'world':
+      callbacks.onShowWorldDialog?.()
+      break
+    case 'character':
+      callbacks.onShowCharacterDialog?.()
+      break
+    case 'chapter':
+      callbacks.onShowChapterDialog?.()
+      break
+    case 'timeline':
+      callbacks.onShowTimeline?.()
+      break
+    case 'toggleSidebar':
+      callbacks.onToggleSidebar?.()
+      break
+    case 'immersive':
+      callbacks.onToggleImmersive?.()
+      break
+    case 'export-docx':
+      callbacks.onExportDocx?.()
+      break
+    case 'export-txt':
+      callbacks.onExportTxt?.()
+      break
+    case 'export-md':
+      callbacks.onExportMd?.()
+      break
+    case 'share':
+      callbacks.onShare?.()
+      break
+  }
+}
+
+// 使用键盘快捷键 composable
+const { setCommandPaletteState } = useKeyboardShortcuts({
+  onOpenCommandPalette: (show = true) => {
+    commandPaletteVisible.value = show
+  }
+})
+
+// 监听命令面板状态
+watch(commandPaletteVisible, (val) => {
+  setCommandPaletteState(val)
+})
+
+// 原有的键盘快捷键（保留 Ctrl+Shift+U 作为后备）
+const legacyKeyDown = (e) => {
   // Ctrl+Shift+U 解锁快捷键
   if (e.ctrlKey && e.shiftKey && e.key === 'U') {
     e.preventDefault()
@@ -24,7 +104,7 @@ const handleKeyDown = (e) => {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keydown', legacyKeyDown)
   
   // 恢复登录状态
   userStore.fetchUserInfo()
@@ -37,10 +117,13 @@ onMounted(() => {
   
   // 检查解锁状态
   userStore.checkUnlockStatus()
+  
+  // 初始化主题
+  themeStore.init()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keydown', legacyKeyDown)
 })
 </script>
 

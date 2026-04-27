@@ -55,7 +55,7 @@
         <el-form-item label="模型" required>
           <el-input 
             v-model="form.model" 
-            placeholder="deepseek-chat / gpt-4" 
+            placeholder="deepseek-v4-flash / gpt-4" 
             size="large"
             class="modern-input"
           >
@@ -141,7 +141,7 @@ watch(visible, (val) => {
 
 const useDeepSeek = () => {
   form.value.baseURL = 'https://api.deepseek.com/v1'
-  form.value.model = 'deepseek-chat'
+  form.value.model = 'deepseek-v4-flash'
   ElMessage.success('已切换到 DeepSeek 配置')
 }
 

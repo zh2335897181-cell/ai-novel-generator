@@ -155,7 +155,7 @@
         <section>
           <h2>10. 联系我们</h2>
           <p>如果您对本协议有任何疑问，请通过以下方式联系我们：</p>
-          <p class="contact-info">邮箱：legal@yidianzhimo.com</p>
+          <p class="contact-info">邮箱：support@example.com（备案完成后更新为正式邮箱）</p>
         </section>
       </div>
 

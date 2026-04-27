@@ -228,7 +228,7 @@ class AIFunctionClient {
   async callWithFunctions(messages, tools, config) {
     const apiKey = config?.apiKey || process.env.AI_API_KEY;
     const baseURL = config?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = config?.model || process.env.AI_MODEL || 'deepseek-chat';
+    const model = config?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
 
     if (!apiKey) {
       throw new Error('请先配置AI API Key');

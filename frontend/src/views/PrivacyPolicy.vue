@@ -102,7 +102,7 @@
         <section>
           <h2>10. 联系我们</h2>
           <p>如果您对本隐私政策有任何疑问或顾虑，请通过以下方式联系我们：</p>
-          <p class="contact-info">邮箱：privacy@yidianzhimo.com</p>
+          <p class="contact-info">邮箱：support@example.com（备案完成后更新为正式邮箱）</p>
         </section>
       </div>
 

@@ -109,8 +109,8 @@ DB_PORT=3306
 
 
 AI_API_KEY=你的AI_API密钥
-AI_BASE_URL=https://api.deepseek.com/v1  
-AI_MODEL=deepseek-chat
+AI_BASE_URL=https://api.deepseek.com/v1
+AI_MODEL=deepseek-v4-flash
 
 
 JWT_SECRET=你的随机字符串至少32位

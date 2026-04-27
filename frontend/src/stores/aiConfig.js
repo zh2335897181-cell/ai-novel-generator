@@ -4,7 +4,7 @@ export const useAIConfigStore = defineStore('aiConfig', {
   state: () => ({
     apiKey: sessionStorage.getItem('ai_api_key') || '',
     baseURL: sessionStorage.getItem('ai_base_url') || 'https://api.deepseek.com/v1',
-    model: sessionStorage.getItem('ai_model') || 'deepseek-chat'
+    model: sessionStorage.getItem('ai_model') || 'deepseek-v4-flash'
   }),
   
   actions: {
@@ -79,7 +79,7 @@ export const useAIConfigStore = defineStore('aiConfig', {
     clearConfig() {
       this.apiKey = ''
       this.baseURL = 'https://api.deepseek.com/v1'
-      this.model = 'deepseek-chat'
+      this.model = 'deepseek-v4-flash'
       sessionStorage.removeItem('ai_api_key')
       sessionStorage.removeItem('ai_base_url')
       sessionStorage.removeItem('ai_model')

@@ -338,22 +338,22 @@ const providers = [
       { label: '推荐', type: 'danger' }
     ],
     features: [
-      'DeepSeek-V3 模型支持超长上下文（128K）',
-      'DeepSeek-R1 推理模型适合复杂剧情设计',
-      '中文理解和生成能力优秀',
+      'DeepSeek-V4 模型支持超长上下文（128K+）',
+      'DeepSeek-V4-Pro 强推理模式适合复杂剧情设计',
+      'DeepSeek-V4-Flash 快速模式性价比高',
       '支持 Function Calling 用于结构化数据提取',
       '价格相对OpenAI便宜 90%以上'
     ],
-    pricing: '输入：¥2/百万tokens，输出：¥8/百万tokens（V3模型）',
+    pricing: 'Flash: ¥1/百万tokens输入, ¥4/百万tokens输出; Pro: ¥2/百万tokens输入, ¥8/百万tokens输出',
     privacy: '数据存储在中国大陆境内，符合国内数据安全法规',
     urls: {
       api: 'https://platform.deepseek.com/api_keys',
       pricing: 'https://platform.deepseek.com/pricing',
-      docs: 'https://platform.deepseek.com/docs'
+      docs: 'https://api-docs.deepseek.com/'
     },
     models: [
-      { value: 'deepseek-chat', label: 'DeepSeek-V3', group: '对话模型', tag: '推荐', tagType: 'success' },
-      { value: 'deepseek-reasoner', label: 'DeepSeek-R1', group: '推理模型', tag: '强推理', tagType: 'warning' }
+      { value: 'deepseek-v4-flash', label: 'DeepSeek-V4-Flash', group: 'V4系列', tag: '推荐', tagType: 'success' },
+      { value: 'deepseek-v4-pro', label: 'DeepSeek-V4-Pro', group: 'V4系列', tag: '强推理', tagType: 'warning' }
     ]
   },
   {
