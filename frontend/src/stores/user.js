@@ -20,14 +20,21 @@ export const useUserStore = defineStore('user', () => {
   // Getters
   const isLoggedIn = computed(() => !!token.value && !!user.value)
   const username = computed(() => user.value?.username || (isGuest.value ? '游客' : ''))
+  const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'super_admin')
   
-  // 是否有限制（游客且未解锁）
+  // 是否有限制（游客且未解锁，超级管理员无限制）
   const isRestricted = computed(() => {
+    if (user.value?.role === 'super_admin' || user.value?.username === 'admin') {
+      return false
+    }
     return isGuest.value && !isUnlocked.value && !isLoggedIn.value
   })
 
-  // 是否可以访问受限功能
+  // 是否可以访问受限功能（超级管理员始终可以）
   const canAccessRestricted = computed(() => {
+    if (user.value?.role === 'super_admin' || user.value?.username === 'admin') {
+      return true
+    }
     return isLoggedIn.value || isUnlocked.value
   })
 
@@ -43,38 +50,72 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // Actions
-  const login = async (username, password) => {
+  // 获取或生成设备指纹
+  const getDeviceId = () => {
+    let deviceId = localStorage.getItem('deviceId')
+    if (!deviceId) {
+      deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9)
+      localStorage.setItem('deviceId', deviceId)
+    }
+    return deviceId
+  }
+
+  const getDeviceName = () => {
+    const ua = navigator.userAgent
+    if (/Edg\//.test(ua)) return 'Edge 浏览器'
+    if (/Chrome\//.test(ua)) return 'Chrome 浏览器'
+    if (/Firefox\//.test(ua)) return 'Firefox 浏览器'
+    if (/Safari\//.test(ua)) return 'Safari 浏览器'
+    return '未知浏览器'
+  }
+
+  const login = async (username, password, adminCode) => {
     try {
-      const res = await api.login({ username, password })
+      const deviceId = getDeviceId()
+      const deviceName = getDeviceName()
+      const res = await api.login({ username, password, adminCode, deviceId, deviceName })
       token.value = res.token
       user.value = res.user
       localStorage.setItem('token', res.token)
       isGuest.value = false
       isUnlocked.value = false
-      
+
       // 检查是否有游客数据需要导入
       const guestNovels = getGuestNovels()
       if (guestNovels.length > 0) {
-        // 保存到返回值中，让调用方处理导入提示
         res.hasGuestData = true
         res.guestNovelCount = guestNovels.length
       }
-      
+
       // 清除游客模式标记
       localStorage.removeItem('guestMode')
       localStorage.removeItem('guestStartTime')
+
+      // 超级管理员强制跳转到管理后台
+      if (res.isSuperAdmin) {
+        res.redirectTo = '/admin'
+      }
+      // 次管理员：标记需要弹出登录方式选择对话框
+      else if (res.isAdmin) {
+        res.showAdminChoice = true
+      }
+
       return res
     } catch (error) {
-      throw new Error(error.response?.data?.message || '登录失败')
+      throw error
     }
   }
 
-  const register = async (username, password) => {
+  const register = async (username, password, inviteCode) => {
     try {
-      const res = await api.register({ username, password })
+      const res = await api.register({ username, password, inviteCode })
+      token.value = res.token
+      user.value = res.user
+      localStorage.setItem('token', res.token)
+      isGuest.value = false
       return res
     } catch (error) {
-      throw new Error(error.response?.data?.message || '注册失败')
+      throw new Error(error.message || '注册失败')
     }
   }
 
@@ -101,6 +142,7 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('guestMode')
     localStorage.removeItem('guestStartTime')
     localStorage.removeItem('guestPausedMs')
+    localStorage.removeItem('guestToken')
   }
 
   const setGuestMode = (value) => {
@@ -341,6 +383,7 @@ export const useUserStore = defineStore('user', () => {
     isTimerPaused,
     isLoggedIn,
     username,
+    isAdmin,
     isRestricted,
     canAccessRestricted,
     login,

@@ -33,10 +33,12 @@ CREATE INDEX IF NOT EXISTS idx_content_novel_created ON story_content(novel_id, 
 CREATE INDEX IF NOT EXISTS idx_character_novel ON character_state(novel_id);
 CREATE INDEX IF NOT EXISTS idx_character_novel_level ON character_state(novel_id, level DESC);
 CREATE INDEX IF NOT EXISTS idx_character_novel_importance ON character_state(novel_id, importance DESC);
+CREATE INDEX IF NOT EXISTS idx_character_novel_name ON character_state(novel_id, name);
 
 -- minor_character_state 表索引
 CREATE INDEX IF NOT EXISTS idx_minor_char_novel ON minor_character_state(novel_id);
 CREATE INDEX IF NOT EXISTS idx_minor_char_novel_mentioned ON minor_character_state(novel_id, last_mentioned_at DESC);
+CREATE INDEX IF NOT EXISTS idx_minor_char_novel_name ON minor_character_state(novel_id, name);
 
 -- -----------------------------------------------------
 -- 4. 物品与地点表索引
@@ -45,9 +47,11 @@ CREATE INDEX IF NOT EXISTS idx_minor_char_novel_mentioned ON minor_character_sta
 -- item_state 表索引
 CREATE INDEX IF NOT EXISTS idx_item_novel ON item_state(novel_id);
 CREATE INDEX IF NOT EXISTS idx_item_novel_mentioned ON item_state(novel_id, last_mentioned_at DESC);
+CREATE INDEX IF NOT EXISTS idx_item_novel_name ON item_state(novel_id, name);
 
 -- location_state 表索引
 CREATE INDEX IF NOT EXISTS idx_location_novel ON location_state(novel_id);
+CREATE INDEX IF NOT EXISTS idx_location_novel_name ON location_state(novel_id, name);
 
 -- -----------------------------------------------------
 -- 5. 时间线事件表索引

@@ -3,8 +3,13 @@ import novelController from '../controllers/novelController.js';
 import authController from '../controllers/authController.js';
 import * as timelineController from '../controllers/timelineController.js';
 import { runValidationTests, runAllTests } from '../utils/testRunner.js';
+import { resolveAIConfig } from '../utils/aiClient.js';
 
 const router = express.Router();
+
+// 公开书架路由
+router.get('/public/bookshelf', novelController.getPublicNovels);
+router.get('/public/novels/:novelId', novelController.getPublicNovelDetail);
 
 // 认证相关路由
 router.post('/auth/register', authController.register);
@@ -15,7 +20,13 @@ router.get('/auth/me', authController.getMe);
 router.post('/novels', novelController.create);
 router.get('/novels', novelController.list);
 router.get('/novels/:id', novelController.detail);
-router.delete('/novels/:id', novelController.delete);
+router.delete('/novels/:id', (req, res) => novelController.delete(req, res));
+router.post('/novels/:novelId/publish', novelController.publishNovel);
+router.post('/novels/:novelId/unpublish', novelController.unpublishNovel);
+router.get('/novels/:novelId/collaborators', (req, res) => novelController.getCollaborators(req, res));
+router.post('/novels/:novelId/collaborators', (req, res) => novelController.addCollaborator(req, res));
+router.put('/novels/:novelId/collaborators/:userId', (req, res) => novelController.updateCollaboratorPermission(req, res));
+router.delete('/novels/:novelId/collaborators/:userId', (req, res) => novelController.removeCollaborator(req, res));
 router.post('/novels/characters', novelController.addCharacter);
 router.put('/novels/world', novelController.updateWorld);
 router.post('/novels/generate', novelController.generate);
@@ -24,7 +35,15 @@ router.get('/novels/:novelId/characters', novelController.getCharacters);
 router.post('/novels/parse-outline', novelController.parseOutline);
 router.post('/novels/chapter-outlines', novelController.generateChapterOutlines);
 router.get('/novels/:novelId/chapter-outlines', novelController.getChapterOutlines);
+router.post('/novels/toc', novelController.generateTOC);
 router.post('/novels/plot-suggestions', novelController.getPlotSuggestions);
+
+// 审核状态相关路由
+router.get('/novels/:novelId/reviews', (req, res) => novelController.getNovelReviews(req, res));
+router.post('/novels/:novelId/resubmit-review', (req, res) => novelController.resubmitForReview(req, res));
+
+// 角色对话相关路由
+router.post('/novels/:novelId/dialogue', (req, res) => novelController.generateDialogue(req, res));
 
 // 测试相关路由
 router.post('/tests/run', async (req, res) => {
@@ -52,9 +71,7 @@ router.post('/ai/chat', async (req, res) => {
   try {
     const { messages, temperature = 0.7, aiConfig } = req.body
 
-    const apiKey = aiConfig?.apiKey || process.env.AI_API_KEY
-    const baseURL = aiConfig?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1'
-    const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-v4-flash'
+    const { apiKey, baseURL, model } = resolveAIConfig(aiConfig)
 
     if (!apiKey) {
       return res.status(400).json({ message: '请先配置AI API Key' })
@@ -93,9 +110,7 @@ router.post('/ai/chat-stream', async (req, res) => {
   try {
     const { messages, temperature = 0.7, aiConfig } = req.body
 
-    const apiKey = aiConfig?.apiKey || process.env.AI_API_KEY
-    const baseURL = aiConfig?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1'
-    const model = aiConfig?.model || process.env.AI_MODEL || 'deepseek-v4-flash'
+    const { apiKey, baseURL, model } = resolveAIConfig(aiConfig)
 
     if (!apiKey) {
       return res.status(400).json({ message: '请先配置AI API Key' })

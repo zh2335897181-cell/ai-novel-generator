@@ -61,6 +61,23 @@
           <el-button type="primary" @click="showCreateDialog = true" :icon="Plus">
             创建新小说
           </el-button>
+          <el-select
+            v-model="categoryFilter"
+            placeholder="全部分类"
+            clearable
+            style="width: 140px; margin-left: 8px"
+            @change="loadNovels"
+          >
+            <el-option
+              v-for="cat in categories"
+              :key="cat"
+              :label="cat"
+              :value="cat"
+            />
+          </el-select>
+          <el-button @click="$router.push('/bookshelf')" style="margin-left: 8px">
+            <el-icon><Reading /></el-icon>公共书架
+          </el-button>
         </div>
       </div>
     </div>
@@ -95,7 +112,12 @@
               title="删除小说"
             />
           </div>
-          <h3>{{ novel.title }}</h3>
+          <h3>{{ novel.title }}
+            <el-tag v-if="novel.is_owner === 0" size="small" type="warning" style="margin-left: 8px">
+              {{ novel.collab_permission === 'edit' ? '协作编辑' : '协作查看' }}
+            </el-tag>
+          </h3>
+          <el-tag v-if="novel.category" size="small" type="info" class="category-tag">{{ novel.category }}</el-tag>
           <p class="card-subtitle">点击继续创作，让剧情自然推进</p>
           <div class="card-footer">
             <span class="date">{{ formatDate(novel.created_at) }}</span>
@@ -109,12 +131,22 @@
     <el-dialog v-model="showCreateDialog" title="创建新小说" width="500px">
       <el-form :model="form">
         <el-form-item label="小说标题">
-          <el-input 
-            v-model="form.title" 
-            placeholder="请输入小说标题" 
+          <el-input
+            v-model="form.title"
+            placeholder="请输入小说标题"
             maxlength="50"
             show-word-limit
           />
+        </el-form-item>
+        <el-form-item label="小说分类">
+          <el-select v-model="form.category" placeholder="选择小说分类" clearable style="width: 100%">
+            <el-option
+              v-for="cat in categories"
+              :key="cat"
+              :label="cat"
+              :value="cat"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -169,7 +201,15 @@ const showUsageGuide = ref(false)
 const showDeleteDialog = ref(false)
 const novelToDelete = ref(null)
 const deleting = ref(false)
-const form = ref({ title: '', loading: false })
+const form = ref({ title: '', category: '', loading: false })
+const categoryFilter = ref('')
+
+const categories = [
+  '玄幻', '奇幻', '武侠', '仙侠', '都市', '现实',
+  '军事', '历史', '游戏', '体育', '科幻', '悬疑',
+  '轻小说', '言情', '谴责', '侦探', '科学幻想',
+  '推理', '惊险', '纪实', '动漫', '乡土', '耽美'
+]
 
 const goToLogin = () => {
   router.push('/login')
@@ -233,7 +273,7 @@ const checkGuestTimer = () => {
 
 const loadNovels = async () => {
   try {
-    const res = await api.getNovels()
+    const res = await api.getNovels(categoryFilter.value || undefined)
     novels.value = res.data ?? []
   } catch (error) {
     ElMessage.error('加载失败：' + (error.message || '请确认后端已启动'))
@@ -249,10 +289,11 @@ const createNovel = async () => {
   form.value.loading = true
 
   try {
-    const res = await api.createNovel(form.value.title)
+    const res = await api.createNovel(form.value.title, form.value.category || undefined)
     ElMessage.success('创建成功')
     showCreateDialog.value = false
     form.value.title = ''
+    form.value.category = ''
     form.value.loading = false
     router.push(`/novel/${res.novelId}`)
   } catch (error) {
@@ -642,6 +683,10 @@ onUnmounted(() => {
   margin: -12px 0 24px 0;
   font-size: 13px;
   color: #6b7280;
+}
+
+.category-tag {
+  margin-bottom: 12px;
 }
 
 .novel-card:hover h3 {

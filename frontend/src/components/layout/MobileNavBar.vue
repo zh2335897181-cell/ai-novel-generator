@@ -24,9 +24,9 @@
 
 <script setup>
 import { computed } from 'vue'
-import { 
-  Reading, Document, User, Setting, 
-  Menu, House, MagicStick 
+import {
+  Reading, Document, User, Setting,
+  Menu, House, MagicStick, Collection
 } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -41,6 +41,7 @@ const emit = defineEmits(['navigate', 'select'])
 const defaultNavItems = [
   { key: 'home', label: '首页', icon: House, path: '/' },
   { key: 'novels', label: '小说', icon: Reading, path: '/novels' },
+  { key: 'bookshelf', label: '书架', icon: Collection, path: '/bookshelf' },
   { key: 'generate', label: '生成', icon: MagicStick, path: null },
   { key: 'settings', label: '设置', icon: Setting, path: '/ai-config' }
 ]

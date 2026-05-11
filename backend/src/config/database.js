@@ -172,10 +172,16 @@ export const startAutoBackup = () => {
     
     const delay = nextBackup - now;
     
-    setTimeout(async () => {
-      console.log('[DB Backup] 执行自动备份...');
-      await backupDatabase();
-      scheduleBackup(); // 重新调度
+    setTimeout(() => {
+      (async () => {
+        try {
+          console.log('[DB Backup] 执行自动备份...');
+          await backupDatabase();
+          scheduleBackup();
+        } catch (error) {
+          console.error('[DB Backup] 自动备份失败:', error.message);
+        }
+      })();
     }, delay);
     
     console.log(`[DB Backup] 下次备份时间: ${nextBackup.toLocaleString('zh-CN')}`);

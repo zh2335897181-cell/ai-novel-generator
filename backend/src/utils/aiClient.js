@@ -1,11 +1,17 @@
 import axios from 'axios';
 
+// 统一解析AI配置：优先使用用户自定义配置，回退到环境变量
+export function resolveAIConfig(aiConfig = {}) {
+  return {
+    apiKey: aiConfig.apiKey || process.env.AI_API_KEY,
+    baseURL: aiConfig.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1',
+    model: aiConfig.model || process.env.AI_MODEL || 'deepseek-v4-flash'
+  };
+}
+
 class AIClient {
-  async chat(messages, temperature = 0.7, config) {
-    // 从请求中获取配置，如果没有则使用环境变量
-    const apiKey = config?.apiKey || process.env.AI_API_KEY;
-    const baseURL = config?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = config?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
+  async chat(messages, temperature = 0.7, config, maxTokens = 2000) {
+    const { apiKey, baseURL, model } = resolveAIConfig(config);
 
     if (!apiKey) {
       throw new Error('请先配置AI API Key');
@@ -18,7 +24,7 @@ class AIClient {
           model: model,
           messages: messages,
           temperature: temperature,
-          max_tokens: 2000,
+          max_tokens: maxTokens,
           response_format: { type: 'text' }
         },
         {
@@ -104,13 +110,13 @@ class AIClient {
 
   // 生成小说内容
   async generateStory(worldState, characters, summary, userInput, config, wordCount = 800) {
-    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, [], [], wordCount);
+    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, [], [], [], wordCount);
     return await this.chat([{ role: 'user', content: prompt }], 0.8, config);
   }
 
   // 生成小说内容（流式）；ragContext 为检索增强片段，可为空
-  async generateStoryStream(worldState, characters, summary, userInput, config, items, locations, minorCharacters, wordCount, onChunk, ragContext = '', previousChapterContent = '', timelineEvents = []) {
-    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, items, locations, minorCharacters, wordCount, ragContext, previousChapterContent, timelineEvents);
+  async generateStoryStream(worldState, characters, summary, userInput, config, items, locations, minorCharacters, wordCount, onChunk, ragContext = '', previousChapterContent = '', timelineEvents = [], chapterNumber = 1, chapterTitle = '') {
+    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, items, locations, minorCharacters, wordCount, ragContext, previousChapterContent, timelineEvents, chapterNumber, chapterTitle);
     return await this.chatStream([{ role: 'user', content: prompt }], 0.8, config, onChunk);
   }
 
@@ -133,7 +139,7 @@ class AIClient {
       console.error('JSON解析失败，原始内容:', result);
       // 返回默认结构
       return {
-        chapter_title: '未命名章节',
+        chapter_title: '',
         chapter_outline: storyContent.substring(0, 200),
         character_updates: [],
         minor_character_updates: [],
@@ -186,7 +192,7 @@ class AIClient {
   }
 
   // 构建小说生成Prompt
-  buildStoryPrompt(worldState, characters, summary, userInput, items = [], locations = [], minorCharacters = [], wordCount = 800, ragContext = '', previousChapterContent = '', timelineEvents = []) {
+  buildStoryPrompt(worldState, characters, summary, userInput, items = [], locations = [], minorCharacters = [], wordCount = 800, ragContext = '', previousChapterContent = '', timelineEvents = [], chapterNumber = 1, chapterTitle = '') {
     const characterList = characters.map(c => {
       let attrs = {};
       try {
@@ -240,7 +246,28 @@ class AIClient {
         }).join('\n')
       : '暂无时间线事件';
 
-    return `你是一个专业的小说续写AI，严格根据给定的世界状态续写小说。
+    const writingStyle = worldState?.style
+      ? `\n## 【写作风格（用户自定义，最高优先级）】 ##\n${worldState.style}\n\n⚠️ 必须严格遵循上述风格设定，这比通用写作要求更重要。`
+      : '';
+
+    const chapterInfo = chapterTitle
+      ? `这是第${chapterNumber}章，本章标题：《${chapterTitle}》`
+      : `这是第${chapterNumber}章`;
+
+    return `你是一位拥有多年创作经验的畅销小说家，你的文字充满人情味和文学质感。你笔下的人物有血有肉，对话自然不做作，情感真实动人。你不是在"生成内容"，而是在用心讲述一个让读者沉浸的故事。
+
+## 【当前章节信息】 ##
+${chapterInfo}
+⚠️ 请围绕本章标题展开创作，确保内容与标题主题一致。如果这是目录中的章节，请严格遵循标题提示的故事方向。
+
+## 【核心写作原则】 ##
+1. **展示而非说教**：通过动作、对话、环境描写来传达情感和情节，而非平铺直叙
+2. **情感驱动**：每个场景都应有情感内核——喜悦、愤怒、恐惧、悲伤、期待、矛盾……让读者能感受到角色的内心波动
+3. **生动的感官描写**：运用视觉、听觉、嗅觉、触觉——风声、气味、温度、光影，让场景立体可感
+4. **真实的对话**：对话要有潜台词，人物各有口癖和说话方式，不追求完美而是追求"像人在说话"
+5. **节奏变化**：紧张时用短句，舒缓时用长句描写，张弛有度
+6. **细节的力量**：用具体的细节打动人心——一个颤抖的手指、一阵沉默、一道意味深长的目光
+7. **留白与含蓄**：不要把所有情感都直白说出，让读者自己去体会
 
 ## 【绝对禁止 - 违反将导致严重后果】 ##
 🚫 死亡角色绝对不能出现、不能复活、不能以任何形式提及
@@ -251,13 +278,13 @@ class AIClient {
 
 ## 【故事时间线（来自timeline_events表）】 ##
 ${timelineContext}
-⚠️ 重要：续写必须严格遵循上述时间线顺序，确保剧情连贯性
+⚠️ 重要：创作必须严格遵循上述时间线顺序，确保剧情连贯性
 
 ## 【上一章结尾回顾】 ##
 ${previousChapterContent ? `上一章最后500字内容（必须严格承接）：
 ${previousChapterContent.slice(-500)}
 
-⚠️ 关键提示：续写必须严格承接上一章的结尾场景、人物状态和情节发展，不能跳跃或重置。
+⚠️ 关键提示：创作必须严格承接上一章的结尾场景、人物状态和情节发展，不能跳跃或重置。
 ` : '这是第一章，无需承接前文。'}
 
 ## 【允许使用的资源】 ##
@@ -277,27 +304,27 @@ ${locationList || '无'}
 类型：${worldState?.genre || '未知'}
 风格：${worldState?.style || '通用风格'}
 规则：${worldState?.rules || '无'}
-背景：${worldState?.background || '无'}
+背景：${worldState?.background || '无'}${writingStyle}
 
 ## 【当前剧情摘要】 ##
 ${summary || '故事刚开始'}
 ${ragContext ? `
 ## 【检索到的相关前文（RAG，须承接、不得矛盾）】 ##
-以下内容来自本书已有章节或摘要的片段，续写时必须与之衔接，不得编造与下列事实冲突的情节：
+以下内容来自本书已有章节或摘要的片段，创作时必须与之衔接，不得编造与下列事实冲突的情节：
 ${ragContext}
 ` : ''}
 
 ## 【用户指令】 ##
 ${userInput}
 
-## 【续写要求】 ##
+## 【创作要求】 ##
 1. 字数要求：${wordCount}字（误差±50字）
 2. 📌 **场景衔接**：必须从上一章结尾的场景继续，不能突然切换地点或时间
 3. 📌 **人物状态**：角色状态、位置、情绪必须与上一章结尾保持一致
 4. 📌 **情节推进**：基于上一章的发展自然推进，解决或延续悬念
 5. 📌 **氛围延续**：保持与上一章一致的情感基调和叙事节奏
 6. 📌 **对话连贯**：如果上一章有未完成的对话或事件，需要自然收尾或延续
-7. 📌 **时间线遵循**：续写内容必须符合上述时间线事件顺序，不能颠倒或跳过重要事件
+7. 📌 **时间线遵循**：创作内容必须符合上述时间线事件顺序，不能颠倒或跳过重要事件
 8. 只使用"存活角色"列表中的角色
 9. 物品必须从"可用物品"中选择，持有者必须正确
 10. 地点必须从"可用地点"中选择
@@ -305,17 +332,15 @@ ${userInput}
 12. 只输出小说正文，不要输出任何JSON或说明
 
 ## 【写作前准备】 ##
-在开始续写之前，请先确认：
-- 上一章结尾的场景是什么？（地点、时间、人物位置）
-- 本章将使用哪些角色？（从存活列表选择2-4个）
-- 本章将使用哪些物品？（从可用列表选择相关物品）
-- 本章将发生在哪个地点？
+在开始创作之前，请先在心里确认：
+- 上一章结尾的场景是什么？人物此刻的心情如何？
+- 本章的情感主线是什么？（紧张/温情/悲壮/热血/悬疑…）
+- 本章将使用哪些角色？他们各自的性格和动机是什么？
+- 哪些细节可以让这个场景更具感染力？（声音、气味、光线、温度…）
+- 人物之间有什么未说出口的情绪和潜台词？
 - 本章在时间线中的位置？（参考时间线事件）
-- 本章的核心事件是什么？
-- 如何承接上一章的悬念或冲突？
-- 本章节与前后时间线事件的关系？
 
-现在开始续写（${wordCount}字）：`;
+现在，以一位作家的心态，开始创作（${wordCount}字）：`;
   }
 
   // 构建摘要提取Prompt
@@ -605,6 +630,234 @@ ${summary || '故事刚开始'}
 8. 确保JSON格式正确
 
 现在开始生成章节大纲：`;
+  }
+
+  // 生成章节目录（TOC）- 小批量直接生成，大批量自动分批
+  async generateTOC(worldState, characters, summary, chapterCount, config, onProgress) {
+    // ≤60章：一次生成
+    if (chapterCount <= 60) {
+      const prompt = this.buildTOCPrompt(worldState, characters, summary, chapterCount);
+      const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 4096);
+      return this.parseJSON(result, 'TOC');
+    }
+
+    // >60章：先规划分卷，再逐卷生成
+    const BATCH_SIZE = 100;
+    const volumeCount = Math.ceil(chapterCount / BATCH_SIZE);
+
+    // 第一阶段：生成分卷规划
+    if (onProgress) onProgress({ phase: 'planning', message: '正在规划分卷结构...' });
+    const volumePlanPrompt = this.buildVolumePlanPrompt(worldState, characters, summary, chapterCount, BATCH_SIZE, volumeCount);
+    const volumePlanRaw = await this.chat([{ role: 'user', content: volumePlanPrompt }], 0.7, config, 2000);
+    const volumePlan = this.parseJSON(volumePlanRaw, '分卷规划');
+
+    const allChapters = [];
+
+    // 第二阶段：逐卷生成章节目录
+    for (let v = 0; v < volumePlan.volumes.length; v++) {
+      const vol = volumePlan.volumes[v];
+      const startChapter = v * BATCH_SIZE + 1;
+      const endChapter = Math.min((v + 1) * BATCH_SIZE, chapterCount);
+      const volChapterCount = endChapter - startChapter + 1;
+
+      if (onProgress) {
+        onProgress({
+          phase: 'generating',
+          message: `正在生成第${v + 1}/${volumePlan.volumes.length}卷（第${startChapter}-${endChapter}章）...`,
+          current: v + 1,
+          total: volumePlan.volumes.length
+        });
+      }
+
+      const batchPrompt = this.buildTOCBatchPrompt(
+        worldState, characters, summary,
+        startChapter, endChapter, volChapterCount,
+        vol, volumePlan.volumes.length, chapterCount
+      );
+
+      // 每卷最多重试2次
+      let batchResult = null;
+      let lastError = null;
+      for (let retry = 0; retry < 2; retry++) {
+        try {
+          const raw = await this.chat([{ role: 'user', content: batchPrompt }], 0.7, config, 4096);
+          batchResult = this.parseJSON(raw, `第${v + 1}卷`);
+          break;
+        } catch (e) {
+          lastError = e;
+          if (retry < 1) {
+            if (onProgress) onProgress({ phase: 'retry', message: `第${v + 1}卷解析失败，重试中...` });
+          }
+        }
+      }
+      if (!batchResult) {
+        throw new Error(`第${v + 1}卷（第${startChapter}-${endChapter}章）生成失败: ${lastError?.message}`);
+      }
+
+      // 修正章节号
+      for (const ch of batchResult.chapters) {
+        allChapters.push({
+          chapter_number: ch.chapter_number,
+          title: ch.title
+        });
+      }
+    }
+
+    // 验证总数
+    if (allChapters.length !== chapterCount) {
+      console.warn(`TOC生成数量不匹配: 预期${chapterCount}, 实际${allChapters.length}`);
+    }
+
+    return { chapters: allChapters, volumes: volumePlan.volumes };
+  }
+
+  // 解析JSON（清理markdown代码块）
+  parseJSON(raw, label) {
+    try {
+      let clean = raw.trim();
+      if (clean.startsWith('```json')) {
+        clean = clean.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      } else if (clean.startsWith('```')) {
+        clean = clean.replace(/```\n?/g, '');
+      }
+      return JSON.parse(clean);
+    } catch (error) {
+      console.error(`${label}解析失败，原始内容:`, raw);
+      throw new Error(`AI返回格式异常（${label}），请重试`);
+    }
+  }
+
+  // 分卷规划Prompt
+  buildVolumePlanPrompt(worldState, characters, summary, chapterCount, batchSize, volumeCount) {
+    const characterNames = characters.map(c => c.name).join('、');
+
+    return `你是一位资深的小说策划编辑。请为一部长篇小说规划分卷结构。
+
+======================== 小说基本信息 ========================
+【类型】${worldState?.genre || '未知'}
+【风格】${worldState?.style || '未知'}
+【世界背景】${worldState?.background || '未设定'}
+【核心规则】${worldState?.rules || '未设定'}
+【主要角色】${characterNames || '暂无'}
+【剧情摘要】${summary || '故事刚开始'}
+
+======================== 分卷规划 ========================
+全书共${chapterCount}章，每卷约${batchSize}章，共${volumeCount}卷。
+请为每卷设计一个主题名称和故事弧线描述。每卷应有明确的故事阶段，卷与卷之间要有递进关系，覆盖完整的开端-发展-转折-高潮-结局。
+
+======================== 输出格式 ========================
+严格JSON（无markdown代码块）：
+{
+  "volumes": [
+    {
+      "volume_number": 1,
+      "title": "卷名（简洁4-8字）",
+      "chapter_range": "第1-100章",
+      "story_arc": "本卷故事弧线描述（50字内）：主要事件、情感走向、关键转折"
+    }
+  ]
+}
+
+现在规划这${chapterCount}章的分卷结构：`;
+  }
+
+  // 单卷章节标题生成Prompt
+  buildTOCBatchPrompt(worldState, characters, summary, startChapter, endChapter, volChapterCount, volumeInfo, totalVolumes, totalChapters) {
+    const characterNames = characters.map(c => c.name).join('、');
+
+    return `你是一位资深的小说策划编辑。请为长篇小说的一卷生成详细章节目录。
+
+======================== 全书概况 ========================
+【总章数】${totalChapters}章，共${totalVolumes}卷
+【类型】${worldState?.genre || '未知'}
+【风格】${worldState?.style || '未知'}
+【世界背景】${worldState?.background || '未设定'}
+【主要角色】${characterNames || '暂无'}
+【剧情摘要】${summary || '故事刚开始'}
+
+======================== 当前分卷信息 ========================
+【卷名】${volumeInfo.title}
+【范围】第${startChapter}-${endChapter}章（共${volChapterCount}章）
+【故事弧线】${volumeInfo.story_arc}
+${volumeInfo.volume_number > 1 ? `【前卷概要】请承接上一卷《${volumeInfo.title}》之前的故事发展` : '【起始】这是全书开端，请从故事的起点开始'}
+
+======================== 📌 重要创作要求 ========================
+1. 标题风格：2-15字，灵活多变，避免千篇一律的四字标题
+2. 每章标题要体现该章核心情节，有画面感和吸引力
+3. 章节之间要有叙事连贯性，体现故事的递进
+4. 避免标题重复或雷同
+5. 标题要符合本卷的故事弧线，不偏离主题
+6. 风格要匹配小说类型的命名习惯
+
+【标题风格示例（注意长短变化）】
+- 穿越到异世界的废柴少年
+- 意外传承
+- 宗门大比震惊四座
+- 秘境惊变之生死一线
+- 归来
+- 山雨欲来风满楼
+
+======================== 输出格式 ========================
+严格JSON（无markdown代码块），必须恰好${volChapterCount}个章节：
+{
+  "chapters": [
+    { "chapter_number": ${startChapter}, "title": "章节标题" },
+    { "chapter_number": ${startChapter + 1}, "title": "章节标题" }
+  ]
+}
+
+现在生成第${startChapter}-${endChapter}章的目录：`;
+  }
+
+  // 小批量TOC Prompt（≤60章，直接生成）
+  buildTOCPrompt(worldState, characters, summary, chapterCount) {
+    const characterNames = characters.map(c => c.name).join('、');
+    const aliveCharacters = characters.filter(c => c.status !== '死亡').map(c => c.name).join('、');
+
+    return `你是一位资深的小说策划编辑，擅长为小说规划章节目录。请根据小说的设定和当前状态，为一部长篇小说设计${chapterCount}章的章节目录。
+
+======================== 小说基本信息 ========================
+【类型】${worldState?.genre || '未知'}
+【风格】${worldState?.style || '未知'}
+【世界背景】${worldState?.background || '未设定'}
+【核心规则】${worldState?.rules || '未设定'}
+
+======================== 角色信息 ========================
+主要角色：${characterNames || '暂无'}
+存活角色：${aliveCharacters || '暂无'}
+
+======================== 当前剧情摘要 ========================
+${summary || '故事刚开始'}
+
+======================== 📌 目录规划要求 ========================
+1. **故事弧线**：${chapterCount}章要构成完整的故事结构，包括开端、发展、转折、高潮、结局
+2. **标题风格**：每个标题要简洁有力（2-15字），长短灵活，避免千篇一律的四字标题，要有变化和吸引力，体现该章核心内容
+3. **节奏把控**：
+   - 前10-20%：铺垫世界观，引入冲突
+   - 中间40-60%：剧情发展，层层推进
+   - 后期20-30%：终极冲突与结局
+4. **标题多样性**：避免重复句式，每章标题应各有特色
+5. **连贯性**：标题之间要有叙事逻辑，体现故事的递进关系
+6. **符合类型**：标题风格必须符合${worldState?.genre || '该小说'}类型的命名习惯
+
+【标题示例（长短结合，避免千篇一律）】
+- 穿越到异世界的废柴少年
+- 意外传承
+- 宗门大比震惊四座
+- 秘境惊变之生死一线
+- 归来
+- 山雨欲来风满楼
+
+======================== 输出格式 ========================
+必须输出严格的JSON格式（不要markdown代码块）：
+{
+  "chapters": [
+    { "chapter_number": 1, "title": "章节标题" },
+    { "chapter_number": 2, "title": "章节标题" }
+  ]
+}
+
+现在开始为这部长篇小说设计${chapterCount}章的目录：`;
   }
 }
 

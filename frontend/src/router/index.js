@@ -1,12 +1,5 @@
 ﻿import { createRouter, createWebHistory } from 'vue-router'
 import Landing from '../views/Landing.vue'
-import NovelList from '../views/NovelList.vue'
-import NovelDetail from '../views/NovelDetail.vue'
-import Login from '../views/Login.vue'
-import AIConfig from '../views/AIConfig.vue'
-import MobileTest from '../views/MobileTest.vue'
-import Privacy from '../views/PrivacyPolicy.vue'
-import Terms from '../views/TermsOfService.vue'
 
 const routes = [
   {
@@ -18,40 +11,58 @@ const routes = [
   {
     path: '/novels',
     name: 'NovelList',
-    component: NovelList
+    component: () => import('../views/NovelList.vue')
   },
   {
     path: '/novel/:id',
     name: 'NovelDetail',
-    component: NovelDetail
+    component: () => import('../views/NovelDetail.vue')
   },
   {
     path: '/login',
     name: 'Login',
-    component: Login,
+    component: () => import('../views/Login.vue'),
     meta: { public: true }
   },
   {
     path: '/ai-config',
     name: 'AIConfig',
-    component: AIConfig
+    component: () => import('../views/AIConfig.vue')
   },
   {
     path: '/mobile-test',
     name: 'MobileTest',
-    component: MobileTest,
+    component: () => import('../views/MobileTest.vue'),
     meta: { public: true }
   },
   {
     path: '/privacy',
     name: 'Privacy',
-    component: Privacy,
+    component: () => import('../views/PrivacyPolicy.vue'),
     meta: { public: true }
   },
   {
     path: '/terms',
     name: 'Terms',
-    component: Terms,
+    component: () => import('../views/TermsOfService.vue'),
+    meta: { public: true }
+  },
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('../views/Admin.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/bookshelf',
+    name: 'BookShelf',
+    component: () => import('../views/BookShelf.vue'),
+    meta: { public: true }
+  },
+  {
+    path: '/read/:novelId',
+    name: 'PublicRead',
+    component: () => import('../views/PublicRead.vue'),
     meta: { public: true }
   }
 ]
@@ -72,9 +83,20 @@ router.beforeEach((to, from, next) => {
   // 如果路由需要认证且用户未登录（包括游客），重定向到登录页
   if (!to.meta.public && !isAuthenticated) {
     next('/login')
-  } else {
-    next()
+    return
   }
+  
+  // 如果路由需要管理员权限
+  if (to.meta.requiresAdmin) {
+    const userStore = useUserStore()
+    const userRole = userStore.user?.role
+    if (userRole !== 'admin' && userRole !== 'super_admin' && !localStorage.getItem('adminKey')) {
+      next('/login')
+      return
+    }
+  }
+  
+  next()
 })
 
 export default router

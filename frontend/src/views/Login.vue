@@ -70,6 +70,14 @@
               />
             </el-form-item>
 
+            <el-form-item v-if="isRegister" label="邀请码">
+              <el-input
+                v-model="form.inviteCode"
+                placeholder="输入邀请码（如需要）"
+                size="large"
+              />
+            </el-form-item>
+
             <el-form-item v-if="isRegister" label="确认密码" prop="confirmPassword">
               <el-input
                 v-model="form.confirmPassword"
@@ -153,6 +161,7 @@ const form = reactive({
   username: '',
   password: '',
   confirmPassword: '',
+  inviteCode: '',
   agreement: false
 })
 
@@ -203,13 +212,35 @@ const handleSubmit = async () => {
     loading.value = true
     try {
       if (isRegister.value) {
-        await userStore.register(form.username, form.password)
+        await userStore.register(form.username, form.password, form.inviteCode || undefined)
         ElMessage.success('注册成功，请登录')
         isRegister.value = false
         form.password = ''
         form.confirmPassword = ''
+        form.inviteCode = ''
       } else {
-        const res = await userStore.login(form.username, form.password)
+        const doLogin = async (adminCode) => {
+          try {
+            return await userStore.login(form.username, form.password, adminCode)
+          } catch (error) {
+            if (error.requireAdminCode) {
+              const code = await ElMessageBox.prompt('请输入管理员安全码', '管理员验证', {
+                confirmButtonText: '确认',
+                cancelButtonText: '取消',
+                inputType: 'password',
+                inputPlaceholder: '6位安全码',
+                closeOnClickModal: false
+              }).catch(() => null)
+              if (code?.value) {
+                return doLogin(code.value)
+              }
+              throw new Error('已取消管理员验证')
+            }
+            throw error
+          }
+        }
+        const res = await doLogin()
+        if (!res) return
         ElMessage.success('登录成功')
         
         // 检查是否有游客数据需要导入
@@ -240,7 +271,31 @@ const handleSubmit = async () => {
           }
         }
         
-        router.push('/novels')
+        // 次管理员：弹出登录方式选择对话框
+        if (res.showAdminChoice) {
+          try {
+            await ElMessageBox.confirm(
+              '您拥有管理员权限，请选择登录方式',
+              '选择登录方式',
+              {
+                confirmButtonText: '进入管理后台',
+                cancelButtonText: '正常使用',
+                distinguishCancelAndClose: true,
+                closeOnClickModal: false,
+                type: 'info'
+              }
+            )
+            router.push('/admin')
+          } catch (action) {
+            // cancel 或 close 都走正常登录
+            router.push('/novels')
+          }
+        } else if (res.redirectTo) {
+          // 超级管理员强制跳转到管理后台
+          router.push(res.redirectTo)
+        } else {
+          router.push('/novels')
+        }
       }
     } catch (error) {
       ElMessage.error(error.message || '操作失败')

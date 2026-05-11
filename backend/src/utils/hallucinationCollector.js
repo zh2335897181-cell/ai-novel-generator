@@ -14,28 +14,32 @@ class HallucinationCollector {
   constructor() {
     this.cases = [];
     this.maxCases = 1000;
-    this.storageKey = 'ai_novel_hallucination_cases';
+    this.storageFile = path.join(__dirname, '../../data/hallucination_cases.json');
     this.loadCases();
   }
 
   loadCases() {
     try {
-      const stored = localStorage.getItem(this.storageKey);
-      if (stored) {
+      if (fs.existsSync(this.storageFile)) {
+        const stored = fs.readFileSync(this.storageFile, 'utf-8');
         this.cases = JSON.parse(stored);
-        console.log(`[HallucinationCollector] 已加载 ${this.cases.length} 个案例`);
+        if (!Array.isArray(this.cases)) this.cases = [];
       }
     } catch (error) {
-      console.error('[HallucinationCollector] 加载案例失败:', error);
+      console.error('[HallucinationCollector] 加载案例失败:', error.message);
       this.cases = [];
     }
   }
 
   saveCases() {
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.cases));
+      const dir = path.dirname(this.storageFile);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(this.storageFile, JSON.stringify(this.cases, null, 2));
     } catch (error) {
-      console.error('[HallucinationCollector] 保存案例失败:', error);
+      console.error('[HallucinationCollector] 保存案例失败:', error.message);
     }
   }
 

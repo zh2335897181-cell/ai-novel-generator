@@ -39,7 +39,7 @@
         <el-icon><Plus /></el-icon> 添加关系
       </el-button>
       <el-button @click="$emit('show-graph')" size="default">
-        <el-icon><MagicStick /></el-icon> AI分析关系
+        <el-icon><MagicStick /></el-icon> 自动生成关系
       </el-button>
       <el-button text @click="clearRelations" size="default" v-if="relations.length > 0">
         <el-icon><Delete /></el-icon> 清空
@@ -231,7 +231,7 @@ const unhighlightRelation = () => {
   })
 }
 
-// AI自动分析关系
+// 自动生成角色关系图
 const autoAnalyzeRelations = async () => {
   if (props.characters.length < 2) {
     ElMessage.warning('至少需要2个角色才能分析关系')
@@ -242,9 +242,6 @@ const autoAnalyzeRelations = async () => {
   analyzing.value = true
   
   try {
-    // 模拟AI分析
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
     const relationTypes = ['师徒', '朋友', '对手', '盟友', '亲人', '同事', '恋人']
     const newRelations = []
     
@@ -273,13 +270,13 @@ const autoAnalyzeRelations = async () => {
     
     relations.value = newRelations
     emit('update:relations', relations.value)
-    ElMessage.success(`AI分析了 ${newRelations.length} 组角色关系`)
+    ElMessage.success(`自动生成了 ${newRelations.length} 组角色关系`)
     
     // 初始化图表
     await nextTick()
     initChart()
   } catch (error) {
-    ElMessage.error('关系分析失败')
+    ElMessage.error('关系生成失败')
     console.error(error)
   } finally {
     analyzing.value = false

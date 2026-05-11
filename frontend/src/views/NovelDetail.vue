@@ -92,6 +92,17 @@
       </div>
     </div>
 
+    <!-- 审核状态提示 -->
+    <div v-if="novel?.status === 'blocked'" class="review-blocked-banner">
+      <div class="blocked-content">
+        <el-icon :size="20"><Warning /></el-icon>
+        <span>小说已被管理员拒绝发布{{ latestRejectReason ? `，原因：${latestRejectReason}` : '' }}</span>
+        <el-button type="warning" size="small" @click="handleResubmitReview" :loading="resubmitting">
+          修改后重新提交审核
+        </el-button>
+      </div>
+    </div>
+
     <!-- 已解锁提示 -->
     <div v-else-if="userStore.isGuest && userStore.isUnlocked" class="unlocked-banner">
       <div class="unlocked-content">
@@ -133,13 +144,13 @@
             </el-breadcrumb>
           </div>
 
-          <h2 class="novel-title" v-show="!isSidebarCollapsed">{{ novel?.title }}</h2>
+          <h2 class="novel-title" v-show="!isSidebarCollapsed">{{ novel?.title }}<el-tag v-if="novel?.category" size="small" type="info" style="margin-left: 12px; vertical-align: middle;">{{ novel.category }}</el-tag><el-button v-if="isOwner" size="small" style="margin-left: 12px" @click="showCollaboratorDialog = true"><el-icon><UserFilled /></el-icon>协作管理</el-button><el-button v-if="isOwner" size="small" style="margin-left: 8px" :type="novel?.is_published ? 'warning' : 'success'" @click="togglePublish"><el-icon><Share /></el-icon>{{ novel?.is_published ? '取消发布' : '发布到书架' }}</el-button></h2>
 
           <!-- 面包屑导航式功能菜单 -->
           <el-menu
-            v-show="!isSidebarCollapsed"
             :default-active="activeMenu"
             class="breadcrumb-menu"
+            :class="{ 'menu-hidden': isSidebarCollapsed }"
             @select="handleMenuSelect"
           >
             <el-sub-menu index="world">
@@ -205,6 +216,9 @@
                   <el-button text type="success" @click="showGrowthChart = true" size="small" v-if="characters.length > 0">
                     <el-icon><TrendCharts /></el-icon>成长曲线
                   </el-button>
+                  <el-button text type="warning" @click="showDialogueDialog = true" size="small" v-if="characters.length >= 2">
+                    <el-icon><ChatDotRound /></el-icon>角色对话
+                  </el-button>
                   <el-button text @click="showCharacterDialog = true" size="small">
                     <el-icon><Plus /></el-icon>添加角色
                   </el-button>
@@ -263,6 +277,9 @@
                   <el-empty v-if="chapterOutlines.length === 0" description="暂无章节大纲" :image-size="50" />
                 </div>
                 <div class="menu-actions">
+                  <el-button text type="primary" @click="showTOCDialog = true" size="small">
+                    <el-icon><Collection /></el-icon>AI生成目录
+                  </el-button>
                   <el-button text type="primary" @click="showChapterDialog = true" size="small">
                     <el-icon><MagicStick /></el-icon>AI生成大纲
                   </el-button>
@@ -540,7 +557,7 @@
                     :rows="3"
                     placeholder="输入剧情指令，例如：让主角遇到一个神秘商人..."
                   />
-                  <el-tooltip content="AI智能分析当前剧情，生成续写建议" placement="left">
+                  <el-tooltip content="AI分析上一章结尾，生成下一章剧情走向建议" placement="left">
                     <el-button 
                       class="ai-suggest-btn"
                       type="primary" 
@@ -550,14 +567,15 @@
                       size="small"
                     >
                       <el-icon><MagicStick /></el-icon>
-                      AI建议
+                      下一章剧情建议
                     </el-button>
                   </el-tooltip>
                 </div>
                 <!-- AI建议下拉面板 -->
                 <div v-if="showSuggestions && plotSuggestions.length > 0" class="suggestions-panel">
                   <div class="suggestions-header">
-                    <span>🤖 AI生成的剧情建议</span>
+                    <span>🤖 第{{ plotChapterInfo.chapterNumber }}章剧情建议</span>
+                    <el-tag v-if="plotChapterInfo.chapterTitle" type="success" size="small" style="margin-left:8px">{{ plotChapterInfo.chapterTitle }}</el-tag>
                     <el-button text @click="showSuggestions = false" size="small">
                       <el-icon><Close /></el-icon>
                     </el-button>
@@ -586,16 +604,17 @@
               </el-form-item>
             </el-form>
             
-            <el-tooltip content="根据剧情指令AI生成下一章内容 (Ctrl+S)" placement="bottom">
-              <el-button 
-                type="primary" 
-                @click="generateStoryStream" 
+            <el-tooltip :content="novel?.status === 'blocked' ? '该小说已被封禁，无法生成' : '根据剧情指令AI生成下一章内容 (Ctrl+S)'" placement="bottom">
+              <el-button
+                type="primary"
+                @click="generateStoryStream"
                 :loading="generating"
+                :disabled="novel?.status === 'blocked'"
                 style="width: 100%;"
                 data-shortcut="generate"
               >
                 <el-icon><MagicStick /></el-icon>
-                {{ generating ? '生成中...' : '开始生成' }}
+                {{ novel?.status === 'blocked' ? '小说已封禁' : generating ? '生成中...' : '开始生成' }}
                 <kbd class="btn-shortcut">Ctrl+S</kbd>
               </el-button>
             </el-tooltip>
@@ -752,23 +771,86 @@
       </template>
     </el-dialog>
 
+    <!-- 生成章节目录对话框（TOC） -->
+    <el-dialog v-model="showTOCDialog" title="AI自动生成章节目录" width="550px">
+      <el-alert
+        title="功能说明"
+        type="success"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <p style="margin:0;line-height:1.8;">
+          设置整部小说的预期章数，AI将根据世界观、角色和剧情摘要，自动为每一章生成一个精炼的标题（目录）。<br/>
+          生成后，每次创作新章节时会自动引用对应标题，确保全书结构连贯。
+        </p>
+      </el-alert>
+
+      <el-form :model="tocForm" label-width="110px">
+        <el-form-item label="预期总章数">
+          <el-input-number v-model="tocForm.chapterCount" :min="1" :max="10000" :step="1" />
+          <span style="margin-left:10px;color:#909399;font-size:12px;">支持1-10000章，建议100章内一批生成，过长可分批</span>
+        </el-form-item>
+        <el-form-item label="提示">
+          <el-text size="small" type="info">
+            目录将覆盖已有记录，请确认无误后再生成
+          </el-text>
+        </el-form-item>
+      </el-form>
+
+      <!-- 批量生成进度 -->
+      <div v-if="tocProgress" style="margin-top:16px;">
+        <el-alert
+          v-if="tocProgress.phase === 'planning'"
+          :title="tocProgress.message"
+          type="info"
+          :closable="false"
+        >
+          <template #default>
+            <el-progress :percentage="30" :indeterminate="true" :duration="2" />
+          </template>
+        </el-alert>
+        <el-alert
+          v-else-if="tocProgress.phase === 'generating'"
+          :title="tocProgress.message"
+          type="success"
+          :closable="false"
+        >
+          <template #default>
+            <el-progress
+              :percentage="Math.round((tocProgress.current / tocProgress.total) * 100)"
+              :text-inside="true"
+              :stroke-width="20"
+            />
+          </template>
+        </el-alert>
+      </div>
+
+      <template #footer>
+        <el-button @click="showTOCDialog = false" :disabled="generatingTOC">取消</el-button>
+        <el-button type="success" @click="generateTOC" :loading="generatingTOC">
+          <el-icon><Collection /></el-icon>
+          开始生成目录
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 生成章节大纲对话框（新增） -->
     <el-dialog v-model="showChapterDialog" title="AI生成章节大纲" width="500px">
-      <el-alert 
-        title="功能说明" 
-        type="info" 
+      <el-alert
+        title="功能说明"
+        type="info"
         :closable="false"
         style="margin-bottom: 20px;"
       >
         AI会根据当前世界观和剧情，自动生成接下来的章节大纲
       </el-alert>
-      
+
       <el-form :model="chapterForm" label-width="100px">
         <el-form-item label="生成章节数">
           <el-input-number v-model="chapterForm.chapterCount" :min="1" :max="20" />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="showChapterDialog = false">取消</el-button>
         <el-button type="primary" @click="generateChapters" :loading="generatingChapters">
@@ -916,13 +998,85 @@
     />
     </div>
   </div>
+
+  <!-- 协作管理对话框 -->
+  <el-dialog v-model="showCollaboratorDialog" title="协作管理" width="500px">
+    <div class="collaborator-section">
+      <div class="add-collaborator">
+        <el-input v-model="collabUsername" placeholder="输入用户名" style="width: 220px" />
+        <el-select v-model="collabPermission" style="width: 100px; margin-left: 8px">
+          <el-option label="可编辑" value="edit" />
+          <el-option label="仅查看" value="view" />
+        </el-select>
+        <el-button type="primary" @click="handleAddCollaborator" style="margin-left: 8px">邀请</el-button>
+      </div>
+      <el-divider />
+      <el-table :data="collaborators" style="margin-top: 12px">
+        <el-table-column prop="username" label="用户名" width="180" />
+        <el-table-column label="权限" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.permission === 'edit' ? 'success' : 'info'">
+              {{ row.permission === 'edit' ? '可编辑' : '仅查看' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="加入时间" width="160">
+          <template #default="{ row }">
+            {{ new Date(row.created_at).toLocaleString('zh-CN') }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作">
+          <template #default="{ row }">
+            <el-button size="small" @click="handleToggleCollabPerm(row)">
+              {{ row.permission === 'edit' ? '改为查看' : '改为编辑' }}
+            </el-button>
+            <el-popconfirm title="确定移除该协作者？" @confirm="handleRemoveCollaborator(row)">
+              <template #reference>
+                <el-button size="small" type="danger" text>移除</el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+  </el-dialog>
+
+  <!-- 角色对话生成对话框 -->
+  <el-dialog v-model="showDialogueDialog" title="AI 角色对话生成" width="600px">
+    <el-form :model="dialogueForm" label-width="80px">
+      <el-form-item label="角色一">
+        <el-select v-model="dialogueForm.char1Id" placeholder="选择角色" style="width: 100%">
+          <el-option v-for="c in characters" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="角色二">
+        <el-select v-model="dialogueForm.char2Id" placeholder="选择角色" style="width: 100%">
+          <el-option v-for="c in characters" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="对话场景">
+        <el-input v-model="dialogueForm.sceneContext" type="textarea" :rows="3" placeholder="描述对话发生的场景，如：在修炼塔顶层偶遇，两人因功法归属发生争执" />
+      </el-form-item>
+    </el-form>
+    <div v-if="dialogueResult" class="dialogue-result">
+      <el-divider />
+      <h4>{{ dialogueResult.title }}</h4>
+      <div class="dialogue-content">{{ dialogueResult.content }}</div>
+    </div>
+    <template #footer>
+      <el-button @click="showDialogueDialog = false">关闭</el-button>
+      <el-button type="primary" @click="generateDialogue" :loading="dialogueGenerating">
+        <el-icon><ChatDotRound /></el-icon>生成对话
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { ref, onMounted, computed, nextTick, watch, onUnmounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown, Menu, Sunny, Moon, FullScreen } from '@element-plus/icons-vue'
+import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown, Menu, Sunny, Moon, FullScreen, Share, ChatDotRound, Collection } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
 import { Document as DocxDocument, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } from 'docx'
@@ -1009,19 +1163,95 @@ const showWorldDialog = ref(false)
 const showCharacterDialog = ref(false)
 const showOutlineDialog = ref(false)
 const showChapterDialog = ref(false)
+const showTOCDialog = ref(false)
 const showGrowthChart = ref(false)
+const showCollaboratorDialog = ref(false)
+const collaborators = ref([])
+const collabUsername = ref('')
+const collabPermission = ref('edit')
+const isOwner = computed(() => novel.value?.user_id === userStore.user?.id)
+
+// 角色对话相关
+// 审核状态相关
+const resubmitting = ref(false)
+const latestRejectReason = ref('')
+
+const loadReviewStatus = async () => {
+  try {
+    const res = await api.getNovelReviews(novelId.value)
+    const reviews = res.data || []
+    const rejected = reviews.find(r => r.status === 'rejected')
+    if (rejected) {
+      latestRejectReason.value = rejected.reason || '未说明'
+    }
+  } catch (e) {
+    // 静默失败，审核状态不是关键路径
+  }
+}
+
+const handleResubmitReview = async () => {
+  try {
+    resubmitting.value = true
+    await api.resubmitForReview(novelId.value)
+    if (novel.value) novel.value.status = 'active'
+    latestRejectReason.value = ''
+    ElMessage.success('已重新提交审核，请等待管理员处理')
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    resubmitting.value = false
+  }
+}
+
+const showDialogueDialog = ref(false)
+const dialogueGenerating = ref(false)
+const dialogueResult = ref(null)
+const dialogueForm = ref({ char1Id: null, char2Id: null, sceneContext: '' })
+
+const generateDialogue = async () => {
+  if (!dialogueForm.value.char1Id || !dialogueForm.value.char2Id) {
+    ElMessage.warning('请选择两个角色')
+    return
+  }
+  if (dialogueForm.value.char1Id === dialogueForm.value.char2Id) {
+    ElMessage.warning('请选择两个不同的角色')
+    return
+  }
+  dialogueGenerating.value = true
+  dialogueResult.value = null
+  try {
+    const aiConfig = aiConfigStore.getConfig ? aiConfigStore.getConfig() : undefined
+    const res = await api.generateDialogue(
+      novel.value.id,
+      dialogueForm.value.char1Id,
+      dialogueForm.value.char2Id,
+      dialogueForm.value.sceneContext || undefined,
+      aiConfig
+    )
+    dialogueResult.value = res.data
+    ElMessage.success('对话已生成并保存到章节中')
+  } catch (e) {
+    ElMessage.error('对话生成失败：' + e.message)
+  } finally {
+    dialogueGenerating.value = false
+  }
+}
 
 const worldForm = ref({ genre: '', style: '', rules: '', background: '' })
 const characterForm = ref({ name: '', level: 1, attributes: '{}' })
 const outlineForm = ref({ outline: '' })
 const chapterForm = ref({ chapterCount: 5 })
+const tocForm = ref({ chapterCount: 20 })
 const parsing = ref(false)
 const generatingChapters = ref(false)
+const generatingTOC = ref(false)
+const tocProgress = ref(null)
 
 // AI剧情建议相关
 const gettingSuggestion = ref(false)
 const showSuggestions = ref(false)
 const plotSuggestions = ref([])
+const plotChapterInfo = ref({ chapterNumber: 0, chapterTitle: '' })
 
 // 灵感库相关
 const plotTemplates = ref([
@@ -1074,6 +1304,14 @@ const exitImmersiveMode = () => {
   document.body.classList.remove('immersive-reading')
 }
 
+const toggleImmersiveMode = () => {
+  if (isImmersiveMode.value) {
+    exitImmersiveMode()
+  } else {
+    enterImmersiveMode()
+  }
+}
+
 const toggleTheme = () => {
   themeStore.toggle()
 }
@@ -1097,19 +1335,18 @@ const showTimeline = ref(false)
 const timelineEvents = ref([])
 
 // 章节展开状态
-const expandedChapters = ref(new Set())
+const expandedChapters = ref({})
 
 // 检查章节是否展开
 const isChapterExpanded = (chapterId) => {
-  return expandedChapters.value.has(chapterId)
+  return !!expandedChapters.value[chapterId]
 }
 
 // 切换章节展开状态
 const toggleChapterExpand = (chapterId) => {
-  if (expandedChapters.value.has(chapterId)) {
-    expandedChapters.value.delete(chapterId)
-  } else {
-    expandedChapters.value.add(chapterId)
+  expandedChapters.value = {
+    ...expandedChapters.value,
+    [chapterId]: !expandedChapters.value[chapterId]
   }
 }
 
@@ -1373,6 +1610,68 @@ const handleMenuSelect = (index) => {
   activeMenu.value = index
 }
 
+const loadCollaborators = async () => {
+  if (!novel.value?.id) return
+  try {
+    const res = await api.getCollaborators(novel.value.id)
+    collaborators.value = res.data
+  } catch (error) {
+    // 非所有者静默失败
+  }
+}
+
+const handleAddCollaborator = async () => {
+  if (!collabUsername.value) {
+    ElMessage.warning('请输入用户名')
+    return
+  }
+  try {
+    await api.addCollaborator(novel.value.id, collabUsername.value, collabPermission.value)
+    ElMessage.success('协作者已添加')
+    collabUsername.value = ''
+    loadCollaborators()
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+const togglePublish = async () => {
+  try {
+    if (novel.value.is_published) {
+      await api.unpublishNovel(novel.value.id)
+      novel.value.is_published = 0
+      ElMessage.success('已取消发布')
+    } else {
+      await api.publishNovel(novel.value.id)
+      novel.value.is_published = 1
+      ElMessage.success('已发布到公共书架')
+    }
+  } catch (e) {
+    ElMessage.error((novel.value.is_published ? '取消发布' : '发布') + '失败：' + e.message)
+  }
+}
+
+const handleRemoveCollaborator = async (row) => {
+  try {
+    await api.removeCollaborator(novel.value.id, row.user_id)
+    ElMessage.success('协作者已移除')
+    loadCollaborators()
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+const handleToggleCollabPerm = async (row) => {
+  try {
+    const newPerm = row.permission === 'edit' ? 'view' : 'edit'
+    await api.updateCollaboratorPermission(novel.value.id, row.user_id, newPerm)
+    ElMessage.success('权限已更新')
+    loadCollaborators()
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
 // 计算属性：是否有境界系统
 const hasRealmSystem = computed(() => {
   if (!worldState.value?.realm_system) return false
@@ -1427,9 +1726,12 @@ const loadDetail = async () => {
 
     // 加载章节大纲
     loadChapterOutlines()
-    
+
     // 加载时间线事件
     loadTimelineEvents()
+
+    // 加载审核状态
+    loadReviewStatus()
   } catch (error) {
     ElMessage.error('加载失败')
   } finally {
@@ -1488,6 +1790,10 @@ const generateStoryStream = async () => {
   }
   if (!aiConfigStore.isConfigured()) {
     ElMessage.warning('请先配置AI')
+    return
+  }
+  if (novel.value?.status === 'blocked') {
+    ElMessage.error('该小说已被封禁，无法生成新章节')
     return
   }
   
@@ -1612,6 +1918,50 @@ const generateChapters = async () => {
   }
 }
 
+// 自动生成章节目录（TOC）
+const generateTOC = async () => {
+  if (!aiConfigStore.isConfigured()) {
+    ElMessage.warning('请先配置AI')
+    return
+  }
+
+  const ct = tocForm.value.chapterCount
+  generatingTOC.value = true
+  tocProgress.value = null
+
+  try {
+    const aiConfig = aiConfigStore.getConfig()
+
+    // >60章使用流式生成，显示进度
+    if (ct > 60) {
+      // 保持对话框打开，显示进度
+      await api.generateTOCStream(novelId.value, ct, aiConfig, (data) => {
+        if (data.type === 'done') {
+          ElMessage.success(`目录生成完成！共 ${data.totalChapters} 章，${data.volumes?.length || 0} 卷`)
+          showTOCDialog.value = false
+          tocProgress.value = null
+          loadChapterOutlines()
+        } else if (data.type === 'error') {
+          ElMessage.error('目录生成失败：' + data.message)
+          tocProgress.value = null
+        } else {
+          tocProgress.value = data
+        }
+      })
+    } else {
+      const res = await api.generateTOC(novelId.value, ct, aiConfig)
+      ElMessage.success(`成功生成${ct}章的目录标题`)
+      showTOCDialog.value = false
+      loadChapterOutlines()
+    }
+  } catch (error) {
+    ElMessage.error('目录生成失败：' + (error.response?.data?.message || error.message))
+    tocProgress.value = null
+  } finally {
+    generatingTOC.value = false
+  }
+}
+
 const getChapterStatusType = (status) => {
   const map = { '未开始': 'info', '进行中': 'warning', '已完成': 'success' }
   return map[status] || 'info'
@@ -1655,8 +2005,12 @@ const getAIPlotSuggestion = async () => {
     
     if (res.suggestions && res.suggestions.length > 0) {
       plotSuggestions.value = res.suggestions
+      plotChapterInfo.value = {
+        chapterNumber: res.chapterNumber || 0,
+        chapterTitle: res.chapterTitle || ''
+      }
       showSuggestions.value = true
-      ElMessage.success('已生成剧情建议')
+      ElMessage.success(`已生成第${res.chapterNumber || ''}章剧情建议`)
     } else {
       ElMessage.info('暂无建议，请尝试输入一些关键字')
     }
@@ -1664,11 +2018,11 @@ const getAIPlotSuggestion = async () => {
     ElMessage.error('获取建议失败：' + (error.message || '未知错误'))
     // 使用默认建议
     plotSuggestions.value = [
-      '让主角遇到一个神秘商人，获得重要情报',
-      '主角发现隐藏在身边的敌人，陷入危机',
-      '主角突破修为瓶颈，实力大幅提升',
-      '主角与重要配角重逢，揭示过去的秘密',
-      '主角获得一件神秘宝物，引发新的冒险'
+      '主角偶然遇到一位神秘商人，获得关于主线的重要情报',
+      '隐藏的敌人露出马脚，主角发现自己已身处险境',
+      '主角在危机中突破修为瓶颈，但付出了意想不到的代价',
+      '一位旧识突然出现，带来过去被遗忘的秘密',
+      '一件来历不明的宝物出现，各方势力开始暗中争夺'
     ]
     showSuggestions.value = true
   } finally {
@@ -2038,6 +2392,22 @@ const generateHtmlContent = () => {
   return content
 }
 
+// 导出 TXT
+const exportTxt = () => {
+  const content = generateTxtContent()
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const title = novel.value?.title || '未命名小说'
+  saveAs(blob, `${title}.txt`)
+}
+
+// 导出 Markdown
+const exportMd = () => {
+  const content = generateMdContent()
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const title = novel.value?.title || '未命名小说'
+  saveAs(blob, `${title}.md`)
+}
+
 // 注入命令回调注册函数
 const registerCommandCallbacks = inject('registerCommandCallbacks', null)
 const unregisterCommandCallbacks = inject('unregisterCommandCallbacks', null)
@@ -2092,6 +2462,10 @@ watch(() => route.params.id, (newId, oldId) => {
     loadDetail()
   }
 }, { immediate: false })
+
+watch(showCollaboratorDialog, (val) => {
+  if (val) loadCollaborators()
+})
 </script>
 
 <style scoped>
@@ -2819,6 +3193,34 @@ watch(() => route.params.id, (newId, oldId) => {
   font-weight: 500;
 }
 
+/* 审核拒绝横幅 */
+.review-blocked-banner {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border-bottom: 2px solid #ef4444;
+  padding: 12px 24px;
+  position: sticky;
+  top: 0;
+  z-index: 101;
+}
+
+.blocked-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.blocked-content .el-icon {
+  color: #ef4444;
+}
+
+.blocked-content span {
+  color: #991b1b;
+  font-weight: 500;
+}
+
 /* Logo区域样式 */
 .logo-section {
   display: flex;
@@ -2891,6 +3293,15 @@ watch(() => route.params.id, (newId, oldId) => {
 .breadcrumb-menu {
   border-right: none;
   background: transparent;
+}
+
+/* 侧边栏折叠时隐藏菜单（不用 display:none，避免 el-sub-menu 丢失内部状态） */
+.breadcrumb-menu.menu-hidden {
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .breadcrumb-menu :deep(.el-sub-menu__title) {
@@ -3860,7 +4271,9 @@ watch(() => route.params.id, (newId, oldId) => {
 }
 
 .story-content-wrapper.expanded {
-  max-height: 5000px;
+  max-height: none;
+  overflow: visible;
+  transition: none;
 }
 
 .story-content-wrapper.expanded::after {
@@ -4244,6 +4657,12 @@ watch(() => route.params.id, (newId, oldId) => {
   
   .story-content-wrapper {
     max-height: 200px;
+  }
+
+  .story-content-wrapper.expanded {
+    max-height: none;
+    overflow: visible;
+    transition: none;
   }
   
   .story-content {
@@ -4653,6 +5072,26 @@ body.immersive-reading .story-list {
   .immersive-title {
     font-size: 16px;
   }
+}
+
+/* 角色对话结果 */
+.dialogue-result {
+  margin-top: 16px;
+}
+.dialogue-result h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #409eff;
+}
+.dialogue-content {
+  white-space: pre-wrap;
+  line-height: 2;
+  font-size: 15px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 </style>

@@ -14,6 +14,14 @@
         <span>一点纸墨</span>
       </div>
       <div class="nav-actions">
+        <el-button v-if="userStore.isAdmin" text @click="goToAdmin" class="admin-link">
+          <el-icon><Setting /></el-icon>
+          管理后台
+        </el-button>
+        <el-button text @click="goToBookshelf" class="bookshelf-link">
+          <el-icon><Reading /></el-icon>
+          公共书架
+        </el-button>
         <el-button type="primary" size="large" @click="goToLogin">
           立即使用 <el-icon class="el-icon--right"><ArrowRight /></el-icon>
         </el-button>
@@ -27,10 +35,20 @@
           用 AI 打造
           <span class="gradient-text">世界级小说</span>
         </h1>
-        <p class="hero-subtitle">
-          智能世界观构建 · 角色成长追踪 · 无限剧情延展<br>
-          让创作灵感源源不断
-        </p>
+        <div class="hero-subtitle">
+          <div class="hero-feature-line">
+            <el-icon><MagicStick /></el-icon>
+            <span>设定<strong>世界观</strong> — AI自动构建势力版图、修炼规则、历史背景</span>
+          </div>
+          <div class="hero-feature-line">
+            <el-icon><User /></el-icon>
+            <span>设计<strong>角色</strong> — 智能追踪等级境界、物品装备、人物关系变化</span>
+          </div>
+          <div class="hero-feature-line">
+            <el-icon><Document /></el-icon>
+            <span>输入<strong>剧情指令</strong> — 一键生成逻辑连贯的完整章节</span>
+          </div>
+        </div>
         <div class="hero-buttons">
           <el-button type="primary" size="large" class="cta-button" @click="goToLogin">
             <el-icon><MagicStick /></el-icon>
@@ -102,17 +120,42 @@
           <div class="feature-icon orange">
             <el-icon><MagicStick /></el-icon>
           </div>
-          <h3>灵感库</h3>
-          <p>内置丰富的情节模板和写作技巧，激发创作灵感</p>
+          <h3>章节目录生成</h3>
+          <p>AI自动规划章节目录，支持万章级别批量生成标题</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon cyan">
             <el-icon><Download /></el-icon>
           </div>
-          <h3>多格式导出</h3>
-          <p>支持 TXT、Markdown、HTML 等多种格式导出</p>
+          <h3>章节无限生成</h3>
+          <p>基于章节目录逐章生成连贯剧情，支持流式实时输出</p>
         </div>
       </div>
+    </section>
+
+    <!-- 发现好文 -->
+    <section class="discover-section">
+      <h2 class="section-title">
+        发现 <span class="gradient-text">好文</span>
+      </h2>
+      <p class="section-desc">看看大家都在创作什么</p>
+      <div class="discover-grid" v-if="featuredNovels.length > 0">
+        <div
+          v-for="novel in featuredNovels"
+          :key="novel.id"
+          class="discover-card"
+          @click="router.push(`/read/${novel.id}`)"
+        >
+          <div class="discover-card-header">
+            <el-icon :size="36"><Reading /></el-icon>
+          </div>
+          <h4>{{ novel.title }}</h4>
+          <el-tag v-if="novel.category" size="small" type="info">{{ novel.category }}</el-tag>
+          <p class="discover-author">作者：{{ novel.author_name }}</p>
+          <span class="discover-date">{{ new Date(novel.published_at).toLocaleDateString('zh-CN') }}</span>
+        </div>
+      </div>
+      <el-empty v-else description="暂无公开作品，快去创作第一篇吧" />
     </section>
 
     <!-- 使用流程 -->
@@ -124,8 +167,8 @@
         <div class="step-item">
           <div class="step-number">1</div>
           <div class="step-content">
-            <h3>配置AI</h3>
-            <p>设置您的AI API密钥，支持多种主流AI服务商</p>
+            <h3>创建世界观</h3>
+            <p>设定小说的世界规则、势力分布、修炼体系等基础框架</p>
           </div>
         </div>
         <div class="step-arrow">
@@ -230,16 +273,16 @@
       </div>
       <div class="about-stats">
         <div class="about-stat-item">
-          <div class="about-stat-number">25年</div>
-          <div class="about-stat-label">创立年份</div>
+          <div class="about-stat-number">2025</div>
+          <div class="about-stat-label">创立于</div>
         </div>
         <div class="about-stat-item">
           <div class="about-stat-number">永久</div>
           <div class="about-stat-label">基础功能免费</div>
         </div>
         <div class="about-stat-item">
-          <div class="about-stat-number">25/4</div>
-          <div class="about-stat-label">AI在线</div>
+          <div class="about-stat-number">7×24</div>
+          <div class="about-stat-label">AI全天在线</div>
         </div>
       </div>
     </section>
@@ -269,10 +312,9 @@
           <span class="divider">|</span>
           <router-link to="/terms" class="footer-link">用户协议</router-link>
           <span class="divider">|</span>
-          <a href="https://beian.miit.gov.cn/" target="_blank" class="footer-link">京ICP备XXXXXXXX号-1</a>
+          <a href="https://beian.miit.gov.cn/" target="_blank" class="footer-link">皖ICP备2026009777号-1</a>
         </div>
-        <p class="beian-hint">备案号申请中，此链接将在备案完成后生效</p>
-        <div class="footer-disclaimer">
+                <div class="footer-disclaimer">
           <el-icon><Warning /></el-icon>
           <span>严禁使用本平台生成或传播侵犯他人知识产权（包括但不限于著作权、商标权等）的内容。如出现侵权行为，与本站开发者无关，由使用者自行承担全部法律责任。</span>
         </div>
@@ -366,10 +408,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import api from '../api/novel'
 import { 
   Reading, ArrowRight, MagicStick, Document, 
   User, TrendCharts, OfficeBuilding, UserFilled, 
-  Share, Download, Check, Close, Timer, Warning 
+  Share, Download, Check, Close, Timer, Warning, Setting 
 } from '@element-plus/icons-vue'
 
 import { useUserStore } from '../stores/user'
@@ -384,6 +427,7 @@ const remainingMs = ref(0)
 const showDisclaimerDialog = ref(false)
 const showAgeDialog = ref(false)
 const guestTimer = ref(null)
+const featuredNovels = ref([])
 
 // 检查年龄确认和免责声明
 const checkDisclaimer = () => {
@@ -447,6 +491,26 @@ const goToLogin = () => {
   }
 }
 
+// 跳转到管理后台
+const goToAdmin = () => {
+  router.push('/admin')
+}
+
+// 跳转到公共书架
+const goToBookshelf = () => {
+  router.push('/bookshelf')
+}
+
+// 获取精选小说展示
+const fetchFeaturedNovels = async () => {
+  try {
+    const res = await api.getPublicNovels({ page: 1, pageSize: 6 })
+    featuredNovels.value = res.data.list
+  } catch (e) {
+    // 静默失败，不影响首页其他功能
+  }
+}
+
 // 游客登录
 const goToGuestLogin = async () => {
   // 先检查 IP 是否被锁定
@@ -471,7 +535,10 @@ const goToGuestLogin = async () => {
 onMounted(() => {
   // 检查免责声明
   checkDisclaimer()
-  
+
+  // 加载精选小说
+  fetchFeaturedNovels()
+
   const isGuest = localStorage.getItem('guestMode') === 'true'
   const startTime = parseInt(localStorage.getItem('guestStartTime') || '0')
   
@@ -664,10 +731,25 @@ onUnmounted(() => {
 }
 
 .hero-subtitle {
-  font-size: 18px;
+  margin-bottom: 40px;
+}
+.hero-feature-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
   color: #94a3b8;
   line-height: 1.8;
-  margin-bottom: 40px;
+  margin-bottom: 10px;
+}
+.hero-feature-line .el-icon {
+  font-size: 20px;
+  color: #667eea;
+  flex-shrink: 0;
+}
+.hero-feature-line strong {
+  color: #e2e8f0;
+  font-weight: 600;
 }
 
 .hero-buttons {
@@ -854,6 +936,85 @@ onUnmounted(() => {
   font-size: 14px;
   color: #94a3b8;
   line-height: 1.6;
+}
+
+/* Section subtitle */
+.section-desc {
+  text-align: center;
+  color: #64748b;
+  font-size: 16px;
+  margin-top: -40px;
+  margin-bottom: 48px;
+}
+
+/* Discover Section */
+.discover-section {
+  position: relative;
+  z-index: 1;
+  padding: 80px 60px;
+}
+
+.discover-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.discover-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 28px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.discover-card:hover {
+  transform: translateY(-6px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(102, 126, 234, 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.discover-card-header {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  color: #667eea;
+}
+
+.discover-card h4 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-card .el-tag {
+  margin-bottom: 10px;
+}
+
+.discover-author {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0 0 6px;
+}
+
+.discover-date {
+  font-size: 12px;
+  color: #64748b;
 }
 
 /* Process Section */
@@ -1223,12 +1384,6 @@ onUnmounted(() => {
   color: #64748b;
 }
 
-.beian-hint {
-  font-size: 12px;
-  color: #94a3b8;
-  margin: 4px 0 8px 0;
-}
-
 .footer-links {
   display: flex;
   align-items: center;
@@ -1368,6 +1523,10 @@ onUnmounted(() => {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .discover-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .process-steps {
     flex-direction: column;
     gap: 30px;
@@ -1416,10 +1575,8 @@ onUnmounted(() => {
     line-height: 1.3;
   }
   
-  .hero-subtitle {
-    font-size: 15px;
-    line-height: 1.6;
-    padding: 0 10px;
+  .hero-feature-line {
+    font-size: 14px;
   }
 
   .hero-stats {
@@ -1502,7 +1659,15 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
     gap: 20px;
   }
-  
+
+  .discover-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .discover-section {
+    padding: 40px 20px;
+  }
+
   .feature-card {
     padding: 24px;
   }
@@ -1605,16 +1770,10 @@ onUnmounted(() => {
     margin-bottom: 16px;
   }
   
-  .hero-subtitle {
-    font-size: 14px;
-    padding: 0 10px;
-    margin-bottom: 24px;
+  .hero-feature-line {
+    font-size: 13px;
   }
-  
-  .hero-subtitle br {
-    display: none;
-  }
-  
+
   .hero-stats {
     flex-direction: column;
     gap: 12px;
@@ -1685,6 +1844,14 @@ onUnmounted(() => {
   
   .feature-card {
     padding: 20px;
+  }
+
+  .discover-section {
+    padding: 30px 16px;
+  }
+
+  .discover-card {
+    padding: 20px 16px;
   }
   
   .feature-icon {

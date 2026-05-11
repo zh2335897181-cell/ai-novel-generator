@@ -120,55 +120,58 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 <style scoped>
 .legal-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #fefcf8 0%, #faf6f0 100%);
+  background: var(--gradient-bg);
   padding: 40px 20px;
 }
 
 .legal-container {
   max-width: 800px;
   margin: 0 auto;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  border: 1px solid var(--border);
 }
 
 .legal-header {
-  background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+  background: var(--gradient-primary);
   color: #fff;
-  padding: 40px;
+  padding: 48px 40px;
   text-align: center;
   position: relative;
 }
 
 .back-link {
   position: absolute;
-  left: 20px;
-  top: 20px;
+  left: 24px;
+  top: 24px;
   color: rgba(255, 255, 255, 0.9);
   text-decoration: none;
   font-size: 14px;
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: color 0.3s;
+  transition: all var(--transition-fast);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
 }
 
 .back-link:hover {
   color: #fff;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .legal-header h1 {
   font-size: 32px;
-  margin: 0 0 12px 0;
-  font-weight: 600;
-  font-family: 'STKaiti', 'KaiTi', 'SimKaiti', cursive, serif;
-  letter-spacing: 3px;
+  margin: 0 0 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
 }
 
 .effective-date {
   margin: 0;
-  opacity: 0.9;
+  opacity: 0.85;
   font-size: 14px;
 }
 
@@ -186,26 +189,25 @@ section:last-child {
 
 h2 {
   font-size: 20px;
-  color: #8b4513;
-  margin: 0 0 16px 0;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #e67e22;
+  color: var(--primary-dark);
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--primary-light);
   font-weight: 600;
-  font-family: 'STKaiti', 'KaiTi', 'SimKaiti', cursive, serif;
 }
 
 h3 {
   font-size: 16px;
-  color: #5d4e37;
-  margin: 20px 0 12px 0;
+  color: var(--text-primary);
+  margin: 20px 0 12px;
   font-weight: 600;
 }
 
 p {
   font-size: 15px;
-  line-height: 1.8;
-  color: #5d4e37;
-  margin: 0 0 12px 0;
+  line-height: 1.85;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
 }
 
 ul {
@@ -215,71 +217,55 @@ ul {
 
 li {
   font-size: 15px;
-  line-height: 1.8;
-  color: #5d4e37;
+  line-height: 1.85;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
+li ul {
+  margin-top: 8px;
+}
+
+li li {
+  margin-bottom: 4px;
+}
+
 strong {
-  color: #8b4513;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
 .contact-info {
-  background: linear-gradient(135deg, rgba(230, 126, 34, 0.1) 0%, rgba(211, 84, 0, 0.05) 100%);
+  background: rgba(251, 113, 133, 0.08);
   padding: 16px 20px;
-  border-radius: 4px;
-  border-left: 3px solid #e67e22;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--primary);
   font-weight: 500;
   margin-top: 12px;
+  color: var(--text-primary);
 }
 
 .legal-footer {
-  background: #f8f5f0;
+  background: var(--bg-elevated);
   padding: 20px 40px;
   text-align: center;
-  border-top: 1px solid #e8e0d5;
+  border-top: 1px solid var(--border);
 }
 
 .legal-footer p {
   margin: 0;
   font-size: 13px;
-  color: #8b7355;
+  color: var(--text-muted);
 }
 
 @media (max-width: 768px) {
-  .legal-page {
-    padding: 0;
-  }
-  
-  .legal-container {
-    border-radius: 0;
-    box-shadow: none;
-  }
-  
-  .legal-header {
-    padding: 60px 20px 30px;
-  }
-  
-  .back-link {
-    top: 16px;
-    left: 16px;
-  }
-  
-  .legal-header h1 {
-    font-size: 24px;
-  }
-  
-  .legal-content {
-    padding: 24px 20px;
-  }
-  
-  h2 {
-    font-size: 18px;
-  }
-  
-  p, li {
-    font-size: 14px;
-  }
+  .legal-page { padding: 0; }
+  .legal-container { border-radius: 0; box-shadow: none; border: none; }
+  .legal-header { padding: 56px 20px 28px; }
+  .back-link { top: 16px; left: 16px; }
+  .legal-header h1 { font-size: 24px; }
+  .legal-content { padding: 24px 20px; }
+  h2 { font-size: 18px; }
+  p, li { font-size: 14px; }
 }
 </style>
