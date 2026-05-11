@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `minor_character_state` (
     `attributes` JSON COMMENT '扩展属性',
     `first_appearance` INT COMMENT '首次出现的章节号',
     `last_appearance` INT COMMENT '最后出现的章节号',
+    `last_mentioned_at` INT NULL COMMENT '最后提及章节号',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`novel_id`) REFERENCES `novel`(`id`) ON DELETE CASCADE,

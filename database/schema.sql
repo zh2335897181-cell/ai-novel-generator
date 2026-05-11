@@ -9,6 +9,7 @@ USE ai_novel_db;
 CREATE TABLE `user` (
     `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
     `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
+    `email` VARCHAR(100) NULL UNIQUE COMMENT '邮箱',
     `password` VARCHAR(255) NOT NULL COMMENT '密码（加密）',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_username (`username`)
@@ -19,6 +20,8 @@ CREATE TABLE `novel` (
     `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
     `user_id` BIGINT NOT NULL COMMENT '用户ID',
     `title` VARCHAR(200) NOT NULL COMMENT '小说标题',
+    `description` TEXT NULL COMMENT '小说简介',
+    `is_published` TINYINT(1) DEFAULT 0 COMMENT '是否发布',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
@@ -44,6 +47,7 @@ CREATE TABLE `character_state` (
     `level` INT DEFAULT 1 COMMENT '等级',
     `status` VARCHAR(20) DEFAULT '正常' COMMENT '状态：正常/受伤/死亡',
     `attributes` JSON COMMENT '扩展属性（力量、智力、装备等）',
+    `importance` INT DEFAULT 3 COMMENT '重要性 1-5',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`novel_id`) REFERENCES `novel`(`id`) ON DELETE CASCADE,
@@ -81,6 +85,7 @@ CREATE TABLE `item_state` (
     `owner` VARCHAR(100) COMMENT '持有者',
     `status` VARCHAR(20) DEFAULT '存在' COMMENT '状态：存在/损毁/丢失',
     `attributes` JSON COMMENT '扩展属性',
+    `last_mentioned_at` INT NULL COMMENT '最后提及章节号',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`novel_id`) REFERENCES `novel`(`id`) ON DELETE CASCADE,
