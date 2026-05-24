@@ -26,7 +26,7 @@ class AuthController {
         const [settings] = await conn.query(
           "SELECT `value` FROM system_settings WHERE `key` = 'invite_only'"
         );
-        const inviteOnly = settings.length > 0 && settings[0].value === 'true';
+        const inviteOnly = settings.length > 0 && (settings[0].value === 'true' || settings[0].value === '1');
 
         if (inviteOnly) {
           if (!inviteCode) {
@@ -115,7 +115,7 @@ class AuthController {
       try {
         // 查找用户（含状态和安全信息）
         const [users] = await conn.query(
-          'SELECT id, username, password, role, status, ban_reason, failed_attempts, locked_until FROM user WHERE username = ?',
+          'SELECT id, username, password, role, status, ban_reason, failed_attempts, locked_until, permissions FROM user WHERE username = ?',
           [username]
         );
 
@@ -224,9 +224,15 @@ class AuthController {
           [user.id]
         );
 
+        // 解析子管理员权限
+        let permissions = [];
+        if (user.permissions) {
+          try { permissions = JSON.parse(user.permissions); } catch (_) { permissions = []; }
+        }
+
         // 生成JWT token
         const token = jwt.sign(
-          { userId: user.id, username: user.username, role: user.role || 'user' },
+          { userId: user.id, username: user.username, role: user.role || 'user', permissions },
           JWT_SECRET,
           { expiresIn: '7d' }
         );
@@ -235,7 +241,7 @@ class AuthController {
           success: true,
           message: '登录成功',
           token,
-          user: { id: user.id, username: user.username, role: user.role || 'user' },
+          user: { id: user.id, username: user.username, role: user.role || 'user', permissions },
           isSuperAdmin: user.role === 'super_admin',
           isAdmin: user.role === 'admin'
         });

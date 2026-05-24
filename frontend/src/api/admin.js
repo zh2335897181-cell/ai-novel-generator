@@ -4,14 +4,14 @@ const getAdminHeaders = (extraHeaders = {}) => {
   const token = localStorage.getItem('token')
   const adminKey = localStorage.getItem('adminKey') || ''
   const headers = { ...extraHeaders }
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
   if (adminKey) {
     headers['x-admin-key'] = adminKey
   }
-  
+
   return headers
 }
 
@@ -91,14 +91,25 @@ export default {
     return data
   },
 
-  async createSubAdmin(username, password) {
+  async createSubAdmin(username, password, permissions = null) {
     const response = await fetch(`${BASE}/sub-admins`, {
       method: 'POST',
       headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, permissions })
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || '创建失败')
+    return data
+  },
+
+  async updateSubAdmin(userId, permissions) {
+    const response = await fetch(`${BASE}/sub-admins/${userId}`, {
+      method: 'PUT',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ permissions })
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '更新失败')
     return data
   },
 
@@ -144,6 +155,17 @@ export default {
     return data
   },
 
+  async batchReviewContent(ids, status, reason = '') {
+    const response = await fetch(`${BASE}/reviews/batch`, {
+      method: 'PUT',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ ids, status, reason })
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '批量审核失败')
+    return data
+  },
+
   // 举报管理
   async getReports(params = {}) {
     const query = new URLSearchParams(params).toString()
@@ -153,6 +175,17 @@ export default {
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || '获取举报列表失败')
     return data
+  },
+
+  async createReport(data) {
+    const response = await fetch('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.message || '提交举报失败')
+    return result
   },
 
   async handleReport(reportId, status, action = '', reason = '') {
@@ -364,6 +397,48 @@ export default {
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || '测试失败')
+    return data
+  },
+
+  // 更新日志
+  async getChangelogs() {
+    const response = await fetch(`${BASE}/changelogs`, {
+      headers: getAdminHeaders()
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '获取失败')
+    return data
+  },
+
+  async createChangelog(changelog) {
+    const response = await fetch(`${BASE}/changelogs`, {
+      method: 'POST',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(changelog)
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '创建失败')
+    return data
+  },
+
+  async updateChangelog(id, changelog) {
+    const response = await fetch(`${BASE}/changelogs/${id}`, {
+      method: 'PUT',
+      headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(changelog)
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '更新失败')
+    return data
+  },
+
+  async deleteChangelog(id) {
+    const response = await fetch(`${BASE}/changelogs/${id}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders()
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '删除失败')
     return data
   }
 }

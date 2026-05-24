@@ -459,6 +459,24 @@ class NovelController {
     }
   }
 
+  // 重新生成单个章节大纲
+  async regenerateChapterOutline(req, res) {
+    try {
+      const { novelId, chapterId } = req.params;
+      const { aiConfig } = req.body;
+
+      if (!novelId || !chapterId) {
+        return res.status(400).json({ success: false, message: '缺少必要参数' });
+      }
+
+      const result = await novelService.regenerateSingleChapterOutline(novelId, chapterId, aiConfig);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error('单章大纲重新生成失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
   // 获取章节大纲列表
   async getChapterOutlines(req, res) {
     try {
@@ -575,6 +593,69 @@ class NovelController {
       res.json({ success: true, data: result });
     } catch (error) {
       console.error('角色对话生成失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // 小说深度分析（SSE流式）
+  async analyzeNovelDeeply(req, res) {
+    try {
+      const { novelId } = req.params;
+      const { aiConfig } = req.body;
+
+      if (!novelId) {
+        return res.status(400).json({ success: false, message: '缺少novelId参数' });
+      }
+
+      const novel = await novelService.getNovelById(novelId);
+      if (!novel) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: '小说不存在' })}\n\n`);
+        return res.end();
+      }
+      if (novel.status === 'blocked') {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: '该小说已被封禁' })}\n\n`);
+        return res.end();
+      }
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+
+      console.log('收到深度分析请求:', { novelId });
+
+      const sendSSE = (data) => {
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+      };
+
+      await novelService.analyzeNovelDeeply(novelId, aiConfig, sendSSE);
+
+      res.end();
+    } catch (error) {
+      console.error('深度分析失败:', error);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+        res.end();
+      }
+    }
+  }
+
+  // 删除章节
+  async deleteChapter(req, res) {
+    try {
+      const { novelId, chapterId } = req.params;
+
+      const novel = await novelService.getNovelById(novelId);
+      if (!novel) {
+        return res.status(404).json({ success: false, message: '小说不存在' });
+      }
+
+      await novelService.deleteChapter(novelId, chapterId);
+      res.json({ success: true, message: '章节已删除' });
+    } catch (error) {
+      console.error('删除章节失败:', error);
       res.status(500).json({ success: false, message: error.message });
     }
   }

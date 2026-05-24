@@ -287,11 +287,9 @@ const handleSubmit = async () => {
             )
             router.push('/admin')
           } catch (action) {
-            // cancel 或 close 都走正常登录
             router.push('/novels')
           }
         } else if (res.redirectTo) {
-          // 超级管理员强制跳转到管理后台
           router.push(res.redirectTo)
         } else {
           router.push('/novels')
@@ -323,7 +321,7 @@ const guestLogin = async () => {
         <ul style="margin: 8px 0; padding-left: 20px; color: #374151;">
           <li>✅ <strong>中文理解能力强</strong>，适合小说创作</li>
           <li>✅ 价格便宜，性价比高</li>
-          <li>✅ 支持超长上下文（128K）</li>
+          <li>✅ 支持 1M（百万Token）超长上下文</li>
         </ul>
         <el-button type="primary" size="small" tag="a" href="https://platform.deepseek.com/api_keys" target="_blank" style="margin-top: 4px;">
           获取 API Key

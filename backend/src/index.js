@@ -75,7 +75,7 @@ const apiKeyAuth = async (req, res, next) => {
   console.log('[Auth Debug]', req.path, 'userId:', req.userId, 'isGuest:', req.headers['x-guest-mode'] === 'true');
   
   // 公开路由列表
-  const publicRoutes = ['/auth/register', '/auth/login', '/health', '/admin', '/public/'];
+  const publicRoutes = ['/auth/register', '/auth/login', '/health', '/admin', '/public/', '/reports', '/announcement', '/maintenance-status'];
   const isPublic = publicRoutes.some(route => req.path.includes(route));
   
   if (isPublic) {
@@ -188,8 +188,154 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 路由
-app.use('/api', routes);
+// 管理员路由优先挂载，不受维护模式影响
 app.use('/api/admin', adminRoutes);
+
+// 判断设置值是否为"启用"（兼容 'true' 和 mysql2 布尔转数字 '1'）
+function isSettingEnabled(value) {
+  return value === 'true' || value === '1';
+}
+
+// 维护模式公开状态查询（不受维护模式拦截）
+app.get('/api/maintenance-status', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('maintenance_mode', 'maintenance_estimated_end', 'maintenance_scheduled_enabled', 'maintenance_scheduled_time', 'maintenance_scheduled_end')"
+    );
+    const settings = {};
+    rows.forEach(r => { settings[r.key] = r.value; });
+
+    let maintenance = isSettingEnabled(settings.maintenance_mode);
+
+    // 检查定时维护
+    let scheduledActive = false;
+    let scheduledTime = null;
+    let scheduledEnd = null;
+    if (!maintenance && isSettingEnabled(settings.maintenance_scheduled_enabled) && settings.maintenance_scheduled_time) {
+      const now = new Date();
+      const st = new Date(settings.maintenance_scheduled_time);
+      if (!isNaN(st.getTime())) {
+        scheduledTime = settings.maintenance_scheduled_time;
+        scheduledEnd = settings.maintenance_scheduled_end || null;
+        if (now >= st) {
+          // 检查是否已过结束时间
+          if (settings.maintenance_scheduled_end) {
+            const et = new Date(settings.maintenance_scheduled_end);
+            if (!isNaN(et.getTime()) && now < et) {
+              maintenance = true;
+              scheduledActive = true;
+            }
+          } else {
+            maintenance = true;
+            scheduledActive = true;
+          }
+        }
+      }
+    }
+
+    res.json({
+      maintenance,
+      estimatedEnd: settings.maintenance_estimated_end || null,
+      scheduled: {
+        enabled: isSettingEnabled(settings.maintenance_scheduled_enabled),
+        time: scheduledTime,
+        end: scheduledEnd,
+        active: scheduledActive
+      }
+    });
+  } catch (err) {
+    console.error('查询维护模式状态失败:', err.message);
+    res.json({ maintenance: false, estimatedEnd: null, scheduled: { enabled: false, time: null, end: null, active: false } });
+  }
+});
+
+// 站点公告公开查询（不受维护模式拦截）
+app.get('/api/announcement', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_notice', 'site_notice_enabled', 'site_notice_type')"
+    );
+    const settings = {};
+    rows.forEach(r => { settings[r.key] = r.value; });
+
+    // 兼容旧数据：如果 site_notice_enabled 键不存在但有公告内容，默认视为启用
+    const hasContent = settings.site_notice && settings.site_notice.trim();
+    let enabled;
+    if (settings.site_notice_enabled !== undefined) {
+      enabled = isSettingEnabled(settings.site_notice_enabled);
+    } else {
+      enabled = !!hasContent;
+    }
+    res.json({
+      success: true,
+      data: {
+        content: settings.site_notice || '',
+        enabled,
+        type: settings.site_notice_type || 'info'
+      }
+    });
+  } catch (err) {
+    console.error('获取公告失败:', err.message);
+    res.json({ success: true, data: { content: '', enabled: false, type: 'info' } });
+  }
+});
+
+// 维护模式中间件 — 拦截非管理员API请求
+app.use('/api', async (req, res, next) => {
+  // 登录和注册接口始终放行，确保管理员可以登录后台
+  // 注意: req.path 是相对于挂载点 /api 的路径
+  const publicPaths = ['/auth/login', '/auth/register', '/auth/me'];
+  if (publicPaths.some(p => req.path === p)) return next();
+
+  try {
+    // 查询手动维护模式和定时维护设置
+    const [rows] = await pool.query(
+      "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('maintenance_mode', 'maintenance_estimated_end', 'maintenance_scheduled_enabled', 'maintenance_scheduled_time', 'maintenance_scheduled_end')"
+    );
+    const settings = {};
+    rows.forEach(r => { settings[r.key] = r.value; });
+
+    // 手动开启 → 启用维护
+    let maintenanceEnabled = isSettingEnabled(settings.maintenance_mode);
+
+    // 定时维护：在时间窗口内自动开启
+    if (!maintenanceEnabled && isSettingEnabled(settings.maintenance_scheduled_enabled) && settings.maintenance_scheduled_time) {
+      const now = new Date();
+      const startTime = new Date(settings.maintenance_scheduled_time);
+      if (!isNaN(startTime.getTime()) && now >= startTime) {
+        // 检查是否已过结束时间
+        if (settings.maintenance_scheduled_end) {
+          const endTime = new Date(settings.maintenance_scheduled_end);
+          if (!isNaN(endTime.getTime()) && now < endTime) {
+            maintenanceEnabled = true;
+          }
+        } else {
+          maintenanceEnabled = true;
+        }
+      }
+    }
+
+    if (!maintenanceEnabled) return next();
+
+    // 检查用户是否为管理员（优先使用 apiKeyAuth 已解析的 req.user）
+    const isAdmin = (req.user?.role === 'admin' || req.user?.role === 'super_admin')
+      || req.headers['x-admin-key'] === process.env.ADMIN_KEY;
+
+    if (isAdmin) return next();
+
+    res.status(503).json({
+      success: false,
+      message: '网站维护中，请稍后再试',
+      maintenance: true
+    });
+  } catch (err) {
+    console.error('维护模式检查失败:', err.message);
+    next(); // 查询失败时放行，避免误拦
+  }
+});
+
+// 主路由
+app.use('/api', routes);
 
 // 健康检查
 app.get('/health', (req, res) => {

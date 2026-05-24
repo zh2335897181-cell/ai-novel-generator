@@ -10,7 +10,8 @@ ADD COLUMN IF NOT EXISTS `role` ENUM('user', 'admin', 'super_admin') DEFAULT 'us
 ADD COLUMN IF NOT EXISTS `status` ENUM('active', 'banned', 'muted') DEFAULT 'active' COMMENT '用户状态',
 ADD COLUMN IF NOT EXISTS `ban_reason` TEXT COMMENT '封禁原因',
 ADD COLUMN IF NOT EXISTS `last_login` DATETIME COMMENT '最后登录时间',
-ADD COLUMN IF NOT EXISTS `parent_admin_id` BIGINT COMMENT '上级管理员ID（仅次管理员有）';
+ADD COLUMN IF NOT EXISTS `parent_admin_id` BIGINT COMMENT '上级管理员ID（仅次管理员有）',
+ADD COLUMN IF NOT EXISTS `permissions` TEXT DEFAULT NULL COMMENT '子管理员权限JSON数组';
 
 -- 2️⃣ 为 novel 表添加状态字段
 ALTER TABLE `novel` 
@@ -87,7 +88,13 @@ INSERT IGNORE INTO `system_settings` (`key`, `value`, `description`) VALUES
 ('max_chapters_per_novel', '500', '每小说最大章节数'),
 ('guest_time_limit', '10', '游客使用时间限制(分钟)'),
 ('maintenance_mode', 'false', '维护模式开关'),
-('site_notice', '', '站点公告');
+('maintenance_estimated_end', '', '维护预计完成时间'),
+('maintenance_scheduled_enabled', 'false', '定时维护开关'),
+('maintenance_scheduled_time', '', '定时维护开始时间'),
+('maintenance_scheduled_end', '', '定时维护结束时间'),
+('site_notice', '', '站点公告'),
+('site_notice_enabled', 'false', '站点公告开关'),
+('site_notice_type', 'info', '站点公告类型(info/warning/danger)');
 
 -- 9️⃣ 创建 character 表（如果不存在，用于角色管理）
 CREATE TABLE IF NOT EXISTS `character` (
@@ -129,6 +136,17 @@ CREATE TABLE IF NOT EXISTS `world_state` (
 SELECT '管理员系统数据库迁移完成' AS message;
 
 -- 创建主管理员账号（admin/root）
-INSERT INTO `user` (`username`, `password`, `role`, `status`) 
+INSERT INTO `user` (`username`, `password`, `role`, `status`)
 VALUES ('admin', '$2a$10$I7T62Fmkdm3XoOd2ySoVvOv3Pdf2smXNR.5I73QXSOTjMilhjnX9S', 'super_admin', 'active')
 ON DUPLICATE KEY UPDATE `role` = 'super_admin';
+
+-- 1️⃣4️⃣ 创建更新日志表
+CREATE TABLE IF NOT EXISTS `changelog` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `version` VARCHAR(20) NOT NULL,
+  `release_date` DATE NOT NULL,
+  `title` VARCHAR(200) NOT NULL,
+  `changes` TEXT NOT NULL,
+  `type` ENUM('feature', 'improvement', 'bugfix', 'breaking') DEFAULT 'feature',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统更新日志';

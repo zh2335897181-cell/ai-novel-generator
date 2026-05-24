@@ -196,6 +196,17 @@ export default {
     return data
   },
 
+  async regenerateChapterOutline(novelId, chapterId, aiConfig) {
+    const response = await authFetch(`${BASE}/novels/${novelId}/chapters/${chapterId}/regenerate-outline`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ aiConfig })
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message)
+    return data
+  },
+
   async generateTOC(novelId, chapterCount, aiConfig) {
     const response = await authFetch(`${BASE}/novels/toc`, {
       method: 'POST',
@@ -473,5 +484,53 @@ export default {
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || '对话生成失败')
     return data
+  },
+
+  // ==================== 章节管理 ====================
+
+  async deleteChapter(novelId, chapterId) {
+    const response = await authFetch(`${BASE}/novels/${novelId}/chapters/${chapterId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '删除章节失败')
+    return data
+  },
+
+  // ==================== 小说深度分析（SSE流式） ====================
+
+  async analyzeNovelDeeply(novelId, aiConfig, onData) {
+    const response = await authFetch(`${BASE}/novels/${novelId}/deep-analysis`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ aiConfig })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '请求失败' }))
+      throw new Error(err.message)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const text = decoder.decode(value)
+      const lines = text.split('\n').filter(line => line.trim() !== '')
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.substring(6))
+          onData(data)
+        } catch (e) {
+          // ignore parse errors for partial chunks
+        }
+      }
+    }
   }
 }

@@ -242,10 +242,16 @@ class AdminController {
           `SELECT COUNT(*) as count FROM user WHERE role = 'admin'`
         );
         
+        // 解析权限 JSON
+        const list = admins.map(a => ({
+          ...a,
+          permissions: a.permissions ? JSON.parse(a.permissions) : []
+        }));
+
         res.json({
           success: true,
           data: {
-            list: admins,
+            list,
             total: total[0].count,
             page: parseInt(page),
             pageSize: parseInt(pageSize)
@@ -286,10 +292,14 @@ class AdminController {
         const bcrypt = await import('bcryptjs');
         const hashedPassword = await bcrypt.default.hash(password, 10);
         
+        // 权限：使用传入的自定义权限或默认权限
+        const defaultPermissions = ['reviews', 'reports', 'novels', 'sensitive-words'];
+        const permissions = Array.isArray(req.body.permissions) ? req.body.permissions : defaultPermissions;
+
         // 创建次管理员，设置上级为当前超级管理员
         const [result] = await conn.query(
-          'INSERT INTO user (username, password, role, status, parent_admin_id) VALUES (?, ?, ?, ?, ?)',
-          [username, hashedPassword, 'admin', 'active', req.user?.userId]
+          'INSERT INTO user (username, password, role, status, parent_admin_id, permissions) VALUES (?, ?, ?, ?, ?, ?)',
+          [username, hashedPassword, 'admin', 'active', req.user?.userId, JSON.stringify(permissions)]
         );
         
         await conn.query(
@@ -347,6 +357,47 @@ class AdminController {
       }
     } catch (error) {
       console.error('删除次管理员失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // 更新次管理员权限
+  async updateSubAdmin(req, res) {
+    try {
+      const { userId } = req.params;
+      const { permissions } = req.body;
+
+      if (req.user?.role !== 'super_admin') {
+        return res.status(403).json({ success: false, message: '权限不足' });
+      }
+
+      if (!Array.isArray(permissions)) {
+        return res.status(400).json({ success: false, message: 'permissions 必须是数组' });
+      }
+
+      const conn = await pool.getConnection();
+      try {
+        const [users] = await conn.query('SELECT role FROM user WHERE id = ?', [userId]);
+        if (users.length === 0) {
+          return res.status(404).json({ success: false, message: '用户不存在' });
+        }
+        if (users[0].role !== 'admin') {
+          return res.status(400).json({ success: false, message: '只能修改次管理员权限' });
+        }
+
+        await conn.query('UPDATE user SET permissions = ? WHERE id = ?', [JSON.stringify(permissions), userId]);
+
+        await conn.query(
+          'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+          [req.user?.userId, 'update_sub_admin_permissions', 'user', userId, JSON.stringify({ permissions })]
+        );
+
+        res.json({ success: true, message: '权限已更新' });
+      } finally {
+        conn.release();
+      }
+    } catch (error) {
+      console.error('更新次管理员权限失败:', error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
@@ -473,19 +524,17 @@ class AdminController {
           'UPDATE content_review SET status = ?, reason = ?, reviewer_id = ?, reviewed_at = NOW() WHERE id = ?',
           [status, reason || null, req.user?.userId || 0, reviewId]
         );
-        
-        // 如果拒绝，标记相关内容
-        if (status === 'rejected' && review.content_type === 'novel') {
-          await conn.query('UPDATE novel SET status = ?, is_published = 0 WHERE id = ?', ['blocked', review.novel_id]);
-        } else if (status === 'rejected' && review.content_type === 'chapter') {
+
+        // 章节审核的附加处理
+        if (status === 'rejected' && review.content_type === 'chapter') {
           await conn.query('UPDATE story_content SET review_status = ? WHERE id = ?', ['rejected', review.content_id]);
-        } else if (status === 'approved' && review.content_type === 'novel') {
-          // 小说审核通过后恢复为active
-          await conn.query('UPDATE novel SET status = ? WHERE id = ?', ['active', review.novel_id]);
         } else if (status === 'approved' && review.content_type === 'chapter') {
           await conn.query('UPDATE story_content SET review_status = ? WHERE id = ?', ['approved', review.content_id]);
         }
-        
+
+        // 根据审核队列重新计算小说状态（自动处理reviewing/active/blocked转换）
+        await this.recomputeNovelStatus(conn, review.novel_id);
+
         // 记录操作日志
         await conn.query(
           'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
@@ -543,54 +592,21 @@ class AdminController {
           return res.status(400).json({ success: false, message: '审核内容为空' });
         }
 
-        const apiKey = process.env.AI_API_KEY;
-        const baseURL = process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-        const model = process.env.AI_MODEL || 'deepseek-chat';
+        const { callAIForContentReview, parseAIReviewDecision } = await import('../utils/autoReview.js');
+        const aiResult = await callAIForContentReview(content);
+        const parsed = parseAIReviewDecision(aiResult);
 
-        if (!apiKey || apiKey === 'your-api-key-here') {
-          return res.status(400).json({ success: false, message: '请先配置 AI API Key' });
-        }
-
-        const systemPrompt = `你是一个专业的内容审核助手。请对以下用户提交的小说内容进行审核，检查是否存在以下问题：
-1. 违法违规内容（色情、暴力、恐怖主义、分裂国家等）
-2. 人身攻击、辱骂、歧视言论
-3. 垃圾广告、恶意推广
-4. 侵犯他人隐私
-5. 其他不适合发布的内容
-
-请按以下格式输出审核结果：
-【审核结论】：通过 / 需人工复核 / 违规
-【风险等级】：低 / 中 / 高
-【问题类型】：（如有）列出具体问题类型
-【详细说明】：（如有）简要说明问题所在
-【建议处理】：给出处理建议`;
-
-        const response = await fetch(`${baseURL}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `请审核以下内容：\n\n${content.substring(0, 8000)}` }
-            ],
-            temperature: 0.1,
-            max_tokens: 2000
-          })
+        res.json({
+          success: true,
+          data: {
+            result: aiResult,
+            parsed: {
+              decision: parsed.decision,
+              riskLevel: parsed.riskLevel,
+              reason: parsed.reason
+            }
+          }
         });
-
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.error?.message || `AI API错误: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const aiResult = data.choices[0].message.content;
-
-        res.json({ success: true, data: { result: aiResult } });
       } finally {
         conn.release();
       }
@@ -761,7 +777,8 @@ class AdminController {
         
         const [novels] = await conn.query(
           `SELECT n.*, u.username as author_name,
-                  (SELECT COUNT(*) FROM content WHERE novel_id = n.id) as chapter_count
+                  (SELECT COUNT(*) FROM story_content WHERE novel_id = n.id) as chapter_count,
+                  (SELECT COUNT(*) FROM content_review WHERE novel_id = n.id AND status = 'pending') as pending_reviews
            FROM novel n
            LEFT JOIN user u ON n.user_id = u.id
            WHERE ${whereClause}
@@ -798,20 +815,30 @@ class AdminController {
     try {
       const { novelId } = req.params;
       const { status, reason } = req.body;
-      
+
       if (!['active', 'blocked', 'reviewing'].includes(status)) {
         return res.status(400).json({ success: false, message: '无效的状态值' });
       }
-      
+
+      // 'reviewing' 状态只能由系统自动设置
+      if (status === 'reviewing') {
+        return res.status(400).json({ success: false, message: '"审核中"状态由系统自动管理，不能手动设置。请使用active或blocked。' });
+      }
+
       const conn = await pool.getConnection();
       try {
+        // 记录旧状态用于日志
+        const [oldRows] = await conn.query('SELECT status FROM novel WHERE id = ?', [novelId]);
+        const oldStatus = oldRows[0]?.status;
+
         await conn.query('UPDATE novel SET status = ? WHERE id = ?', [status, novelId]);
-        
+
         await conn.query(
           'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
-          [req.user?.userId || 0, 'update_novel_status', 'novel', novelId, JSON.stringify({ status, reason })]
+          [req.user?.userId || 0, 'update_novel_status', 'novel', novelId,
+            JSON.stringify({ old_status: oldStatus, new_status: status, reason, trigger: 'manual' })]
         );
-        
+
         res.json({ success: true, message: '小说状态已更新' });
       } finally {
         conn.release();
@@ -990,9 +1017,11 @@ class AdminController {
       
       try {
         for (const [key, value] of Object.entries(settings)) {
+          // 将布尔值规范化为 'true'/'false' 字符串，避免 mysql2 将 true→1, false→0
+          const normalizedValue = typeof value === 'boolean' ? (value ? 'true' : 'false') : value;
           await conn.query(
             'INSERT INTO system_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
-            [key, value, value]
+            [key, normalizedValue, normalizedValue]
           );
         }
         
@@ -1055,7 +1084,7 @@ class AdminController {
         await conn.query(`
           CREATE TABLE IF NOT EXISTS report (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            type ENUM('novel', 'chapter', 'user', 'other') NOT NULL,
+            type ENUM('bug','suggestion','content','other','novel','chapter','user') NOT NULL,
             reporter_id INT,
             target_user_id INT,
             novel_id INT,
@@ -1071,6 +1100,13 @@ class AdminController {
           )
         `);
         
+        // 兼容旧数据库：扩展 report 表 type 枚举值
+        try {
+          await conn.query(`ALTER TABLE report MODIFY COLUMN type ENUM('bug','suggestion','content','other','novel','chapter','user') NOT NULL`);
+        } catch (e) {
+          // 忽略失败（可能已经更新过）
+        }
+
         // 管理员操作日志表
         await conn.query(`
           CREATE TABLE IF NOT EXISTS admin_log (
@@ -1106,9 +1142,28 @@ class AdminController {
           ('max_chapters_per_novel', '500', '每小说最大章节数'),
           ('guest_time_limit', '10', '游客使用时间限制(分钟)'),
           ('maintenance_mode', 'false', '维护模式开关'),
-          ('site_notice', '', '站点公告')
+          ('maintenance_estimated_end', '', '维护预计完成时间'),
+          ('maintenance_scheduled_enabled', 'false', '定时维护开关'),
+          ('maintenance_scheduled_time', '', '定时维护开始时间'),
+          ('maintenance_scheduled_end', '', '定时维护结束时间'),
+          ('site_notice', '', '站点公告'),
+          ('site_notice_enabled', 'false', '站点公告开关'),
+          ('site_notice_type', 'info', '站点公告类型(info/warning/danger)')
         `);
-        
+
+        // 创建更新日志表
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS changelog (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            version VARCHAR(20) NOT NULL,
+            release_date DATE NOT NULL,
+            title VARCHAR(200) NOT NULL,
+            changes TEXT NOT NULL,
+            type ENUM('feature', 'improvement', 'bugfix', 'breaking') DEFAULT 'feature',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
         res.json({ success: true, message: '审核系统表初始化完成' });
       } finally {
         conn.release();
@@ -1397,6 +1452,218 @@ class AdminController {
       const result = await sensitiveWordService.testFilter(text);
       res.json({ success: true, data: result });
     } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // ==================== 审核辅助方法 ====================
+
+  // 根据审核队列重新计算小说状态
+  async recomputeNovelStatus(conn, novelId) {
+    const [currentRows] = await conn.query('SELECT status FROM novel WHERE id = ?', [novelId]);
+    const oldStatus = currentRows[0]?.status;
+
+    const [pendingRows] = await conn.query(
+      'SELECT COUNT(*) as count FROM content_review WHERE novel_id = ? AND status = "pending"',
+      [novelId]
+    );
+
+    let newStatus;
+    if (pendingRows[0].count > 0) {
+      await conn.query("UPDATE novel SET status = 'reviewing' WHERE id = ?", [novelId]);
+      newStatus = 'reviewing';
+    } else {
+      const [rejectedRows] = await conn.query(
+        'SELECT COUNT(*) as count FROM content_review WHERE novel_id = ? AND status = "rejected"',
+        [novelId]
+      );
+      newStatus = rejectedRows[0].count > 0 ? 'blocked' : 'active';
+      await conn.query('UPDATE novel SET status = ? WHERE id = ?', [newStatus, novelId]);
+    }
+
+    if (oldStatus !== newStatus) {
+      await conn.query(
+        'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+        [0, 'novel_status_change', 'novel', novelId, JSON.stringify({ old_status: oldStatus, new_status: newStatus, trigger: 'auto' })]
+      );
+    }
+
+    return newStatus;
+  }
+
+  // 批量审核内容
+  async batchReviewContent(req, res) {
+    try {
+      const { ids, status, reason } = req.body;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ success: false, message: '请选择要审核的内容' });
+      }
+      if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ success: false, message: '无效的审核状态' });
+      }
+
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+
+        const affectedNovelIds = new Set();
+        let processed = 0;
+
+        for (const reviewId of ids) {
+          const [reviews] = await conn.query(
+            'SELECT * FROM content_review WHERE id = ? AND status = "pending"',
+            [reviewId]
+          );
+          if (reviews.length === 0) continue;
+
+          const review = reviews[0];
+
+          await conn.query(
+            'UPDATE content_review SET status = ?, reason = ?, reviewer_id = ?, reviewed_at = NOW() WHERE id = ?',
+            [status, reason || null, req.user?.userId || 0, reviewId]
+          );
+
+          // 章节审核的附加处理
+          if (status === 'rejected' && review.content_type === 'chapter') {
+            await conn.query('UPDATE story_content SET review_status = ? WHERE id = ?', ['rejected', review.content_id]);
+          } else if (status === 'approved' && review.content_type === 'chapter') {
+            await conn.query('UPDATE story_content SET review_status = ? WHERE id = ?', ['approved', review.content_id]);
+          }
+
+          await conn.query(
+            'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+            [req.user?.userId || 0, 'batch_review_content', 'review', reviewId,
+              JSON.stringify({ status, reason, batch: ids.join(',') })]
+          );
+
+          if (review.novel_id) affectedNovelIds.add(review.novel_id);
+          processed++;
+        }
+
+        // 重新计算受影响小说的状态
+        for (const novelId of affectedNovelIds) {
+          await this.recomputeNovelStatus(conn, novelId);
+        }
+
+        await conn.commit();
+
+        res.json({
+          success: true,
+          message: `已${status === 'approved' ? '通过' : '拒绝'} ${processed} 条审核`,
+          data: { processed, affectedNovels: affectedNovelIds.size }
+        });
+      } catch (error) {
+        await conn.rollback();
+        throw error;
+      } finally {
+        conn.release();
+      }
+    } catch (error) {
+      console.error('批量审核失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // ==================== 更新日志 ====================
+
+  async getChangelogs(req, res) {
+    try {
+      const conn = await pool.getConnection();
+      try {
+        const [rows] = await conn.query(
+          'SELECT * FROM changelog ORDER BY release_date DESC, id DESC'
+        );
+        res.json({ success: true, data: rows });
+      } finally {
+        conn.release();
+      }
+    } catch (error) {
+      console.error('获取更新日志失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  async createChangelog(req, res) {
+    try {
+      const { version, release_date, title, changes, type } = req.body;
+      if (!version || !release_date || !title || !changes) {
+        return res.status(400).json({ success: false, message: '缺少必填字段' });
+      }
+
+      const conn = await pool.getConnection();
+      try {
+        const [result] = await conn.query(
+          'INSERT INTO changelog (version, release_date, title, changes, type) VALUES (?, ?, ?, ?, ?)',
+          [version, release_date, title, changes, type || 'feature']
+        );
+
+        await conn.query(
+          'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+          [req.user?.userId || 0, 'create_changelog', 'changelog', result.insertId, JSON.stringify({ version, title })]
+        );
+
+        res.json({ success: true, message: '更新日志已创建', data: { id: result.insertId } });
+      } finally {
+        conn.release();
+      }
+    } catch (error) {
+      console.error('创建更新日志失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  async updateChangelog(req, res) {
+    try {
+      const { id } = req.params;
+      const { version, release_date, title, changes, type } = req.body;
+
+      const conn = await pool.getConnection();
+      try {
+        const [existing] = await conn.query('SELECT * FROM changelog WHERE id = ?', [id]);
+        if (existing.length === 0) {
+          return res.status(404).json({ success: false, message: '记录不存在' });
+        }
+
+        await conn.query(
+          'UPDATE changelog SET version = ?, release_date = ?, title = ?, changes = ?, type = ? WHERE id = ?',
+          [version, release_date, title, changes, type, id]
+        );
+
+        await conn.query(
+          'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+          [req.user?.userId || 0, 'update_changelog', 'changelog', id, JSON.stringify({ version, title })]
+        );
+
+        res.json({ success: true, message: '更新日志已更新' });
+      } finally {
+        conn.release();
+      }
+    } catch (error) {
+      console.error('更新更新日志失败:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  async deleteChangelog(req, res) {
+    try {
+      const { id } = req.params;
+
+      const conn = await pool.getConnection();
+      try {
+        await conn.query('DELETE FROM changelog WHERE id = ?', [id]);
+
+        await conn.query(
+          'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+          [req.user?.userId || 0, 'delete_changelog', 'changelog', id, '{}']
+        );
+
+        res.json({ success: true, message: '更新日志已删除' });
+      } finally {
+        conn.release();
+      }
+    } catch (error) {
+      console.error('删除更新日志失败:', error);
       res.status(500).json({ success: false, message: error.message });
     }
   }

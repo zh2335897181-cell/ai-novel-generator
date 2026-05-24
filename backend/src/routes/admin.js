@@ -23,13 +23,14 @@ const adminAuth = (req, res, next) => {
       // 检查是否是管理员角色（包括超级管理员和次管理员）
       if (decoded.role === 'admin' || decoded.role === 'super_admin') {
         req.user = decoded;
+        req.user.permissions = decoded.permissions || [];
         return next();
       }
     }
 
     // 方式2: 管理员密钥验证（初始设置用）
     if (adminKey && process.env.ADMIN_KEY && adminKey === process.env.ADMIN_KEY) {
-      req.user = { userId: 0, username: 'system', role: 'super_admin' };
+      req.user = { userId: 0, username: 'system', role: 'super_admin', permissions: [] };
       return next();
     }
 
@@ -39,8 +40,42 @@ const adminAuth = (req, res, next) => {
   }
 };
 
+// 子管理员权限映射：URL前缀 → 权限key
+const routePermissionMap = {
+  '/api/admin/dashboard': 'dashboard',
+  '/api/admin/users': 'users',
+  '/api/admin/sub-admins': 'sub-admins',
+  '/api/admin/reviews': 'reviews',
+  '/api/admin/reports': 'reports',
+  '/api/admin/novels': 'novels',
+  '/api/admin/logs': 'logs',
+  '/api/admin/invite-codes': 'invite-codes',
+  '/api/admin/sensitive-words': 'sensitive-words',
+  '/api/admin/devices': 'devices',
+  '/api/admin/settings': 'settings',
+  '/api/admin/changelogs': 'changelogs'
+};
+
 // 所有管理员路由都需要权限验证
 router.use(adminAuth);
+
+// 子管理员权限检查中间件
+router.use((req, res, next) => {
+  // 超级管理员和管理员密钥不受限制
+  if (req.user?.role === 'super_admin') return next();
+
+  // 子管理员：检查是否拥有对应权限
+  if (req.user?.role === 'admin') {
+    const permissions = req.user.permissions || [];
+    const matchedKey = Object.entries(routePermissionMap).find(([prefix]) => req.originalUrl.startsWith(prefix));
+    if (matchedKey) {
+      if (permissions.includes(matchedKey[1])) return next();
+      return res.status(403).json({ success: false, message: '权限不足，请联系超级管理员授予此功能' });
+    }
+  }
+
+  next();
+});
 
 // 数据库初始化
 router.post('/init', adminController.initTables);
@@ -57,11 +92,13 @@ router.delete('/users/:userId', adminController.deleteUser);
 // 次管理员管理
 router.get('/sub-admins', adminController.getSubAdmins);
 router.post('/sub-admins', adminController.createSubAdmin);
+router.put('/sub-admins/:userId', adminController.updateSubAdmin);
 router.delete('/sub-admins/:userId', adminController.deleteSubAdmin);
 
 // 内容审核
 router.get('/reviews', adminController.getReviewList);
 router.post('/reviews', adminController.submitForReview);
+router.put('/reviews/batch', adminController.batchReviewContent);
 router.put('/reviews/:reviewId', adminController.reviewContent);
 router.post('/reviews/:reviewId/ai-check', adminController.aiCheckReview);
 
@@ -100,5 +137,11 @@ router.post('/sensitive-words/batch', adminController.batchImportWords);
 router.put('/sensitive-words/:wordId', adminController.updateSensitiveWord);
 router.delete('/sensitive-words/:wordId', adminController.deleteSensitiveWord);
 router.post('/sensitive-words/test', adminController.testSensitiveWords);
+
+// 更新日志管理
+router.get('/changelogs', adminController.getChangelogs);
+router.post('/changelogs', adminController.createChangelog);
+router.put('/changelogs/:id', adminController.updateChangelog);
+router.delete('/changelogs/:id', adminController.deleteChangelog);
 
 export default router;

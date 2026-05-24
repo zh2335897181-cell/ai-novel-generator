@@ -11,51 +11,55 @@
         @select="handleMenuSelect"
         class="sidebar-menu"
       >
-        <el-menu-item index="dashboard">
+        <el-menu-item index="dashboard" v-if="hasPermission('dashboard')">
           <el-icon><DataAnalysis /></el-icon>
           <span>数据概览</span>
         </el-menu-item>
-        <el-menu-item index="users">
+        <el-menu-item index="users" v-if="hasPermission('users')">
           <el-icon><User /></el-icon>
           <span>用户管理</span>
         </el-menu-item>
-        <el-menu-item index="sub-admins">
+        <el-menu-item index="sub-admins" v-if="isSuperAdmin">
           <el-icon><UserFilled /></el-icon>
           <span>次管理员管理</span>
         </el-menu-item>
-        <el-menu-item index="reviews">
+        <el-menu-item index="reviews" v-if="hasPermission('reviews')">
           <el-icon><DocumentChecked /></el-icon>
           <span>内容审核</span>
           <el-badge v-if="stats.reviews?.pending > 0" :value="stats.reviews.pending" class="badge" />
         </el-menu-item>
-        <el-menu-item index="reports">
+        <el-menu-item index="reports" v-if="hasPermission('reports')">
           <el-icon><Warning /></el-icon>
           <span>举报处理</span>
           <el-badge v-if="stats.reports?.pending > 0" :value="stats.reports.pending" class="badge" />
         </el-menu-item>
-        <el-menu-item index="novels">
+        <el-menu-item index="novels" v-if="hasPermission('novels')">
           <el-icon><Reading /></el-icon>
           <span>小说管理</span>
         </el-menu-item>
-        <el-menu-item index="logs">
+        <el-menu-item index="logs" v-if="hasPermission('logs')">
           <el-icon><Memo /></el-icon>
           <span>操作日志</span>
         </el-menu-item>
-        <el-menu-item index="invite-codes">
+        <el-menu-item index="invite-codes" v-if="hasPermission('invite-codes')">
           <el-icon><Ticket /></el-icon>
           <span>邀请码管理</span>
         </el-menu-item>
-        <el-menu-item index="sensitive-words">
+        <el-menu-item index="sensitive-words" v-if="hasPermission('sensitive-words')">
           <el-icon><Warning /></el-icon>
           <span>敏感词管理</span>
         </el-menu-item>
-        <el-menu-item index="devices">
+        <el-menu-item index="devices" v-if="hasPermission('devices')">
           <el-icon><Monitor /></el-icon>
           <span>受信任设备</span>
         </el-menu-item>
-        <el-menu-item index="settings">
+        <el-menu-item index="settings" v-if="hasPermission('settings')">
           <el-icon><Tools /></el-icon>
           <span>系统设置</span>
+        </el-menu-item>
+        <el-menu-item index="changelogs" v-if="hasPermission('changelogs')">
+          <el-icon><Notebook /></el-icon>
+          <span>更新日志</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -198,10 +202,22 @@
                   </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column label="权限" min-width="250">
+                <template #default="{ row }">
+                  <el-tag
+                    v-for="p in (row.permissions || [])"
+                    :key="p"
+                    size="small"
+                    style="margin:2px;"
+                  >{{ permLabel(p) }}</el-tag>
+                  <span v-if="!(row.permissions || []).length" style="color:#909399;font-size:12px;">无权限</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="parent_admin_name" label="上级管理员" width="150" />
               <el-table-column prop="created_at" label="创建时间" width="180" />
-              <el-table-column label="操作" width="150">
+              <el-table-column label="操作" width="200">
                 <template #default="{ row }">
+                  <el-button v-if="isSuperAdmin" size="small" type="primary" @click="openPermDialog(row)">权限</el-button>
                   <el-button v-if="isSuperAdmin" size="small" type="danger" @click="handleDeleteSubAdmin(row)">删除</el-button>
                 </template>
               </el-table-column>
@@ -274,14 +290,28 @@
             <template #header>
               <div class="card-header">
                 <span>内容审核</span>
-                <el-select v-model="reviewStatus" @change="loadReviews" style="width: 150px">
-                  <el-option label="待审核" value="pending" />
-                  <el-option label="已通过" value="approved" />
-                  <el-option label="已拒绝" value="rejected" />
-                </el-select>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <el-select v-model="reviewStatus" @change="loadReviews" style="width: 150px">
+                    <el-option label="待审核" value="pending" />
+                    <el-option label="已通过" value="approved" />
+                    <el-option label="已拒绝" value="rejected" />
+                  </el-select>
+                </div>
               </div>
             </template>
-            <el-table :data="reviews" v-loading="loading">
+            <!-- 批量操作栏 -->
+            <div v-if="selectedReviews.length > 0 && reviewStatus === 'pending'" class="batch-action-bar">
+              <span class="batch-selected-count">已选 {{ selectedReviews.length }} 项</span>
+              <el-button size="small" type="success" :loading="batchReviewing" @click="handleBatchReview('approved')">
+                批量通过
+              </el-button>
+              <el-button size="small" type="danger" :loading="batchReviewing" @click="handleBatchReview('rejected')">
+                批量拒绝
+              </el-button>
+              <el-button size="small" @click="selectedReviews = []">取消选择</el-button>
+            </div>
+            <el-table :data="reviews" v-loading="loading" @selection-change="val => selectedReviews = val">
+              <el-table-column type="selection" width="50" :selectable="row => row.status === 'pending'" />
               <el-table-column prop="id" label="ID" width="80" />
               <el-table-column label="类型" width="100">
                 <template #default="{ row }">
@@ -334,15 +364,19 @@
             </template>
             <el-table :data="reports" v-loading="loading">
               <el-table-column prop="id" label="ID" width="80" />
-              <el-table-column label="类型" width="100">
+              <el-table-column label="类型" width="110">
                 <template #default="{ row }">
-                  <el-tag>{{ row.type }}</el-tag>
+                  <el-tag :type="getReportTypeTag(row)">{{ getReportTypeLabel(row) }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="reporter_name" label="举报人" width="120" />
               <el-table-column prop="target_user_name" label="被举报人" width="120" />
               <el-table-column prop="novel_title" label="相关小说" width="150" />
-              <el-table-column prop="reason" label="举报原因" show-overflow-tooltip />
+              <el-table-column label="原因详情" min-width="250">
+                <template #default="{ row }">
+                  <div class="reason-cell">{{ getReportReason(row) }}</div>
+                </template>
+              </el-table-column>
               <el-table-column label="状态" width="100">
                 <template #default="{ row }">
                   <el-tag :type="row.status === 'resolved' ? 'success' : row.status === 'dismissed' ? 'info' : 'warning'">
@@ -387,11 +421,16 @@
               <el-table-column prop="id" label="ID" width="80" />
               <el-table-column prop="title" label="标题" width="200" />
               <el-table-column prop="author_name" label="作者" width="120" />
-              <el-table-column label="状态" width="100">
+              <el-table-column label="状态" width="130">
                 <template #default="{ row }">
-                  <el-tag :type="row.status === 'active' ? 'success' : row.status === 'blocked' ? 'danger' : 'warning'">
-                    {{ row.status === 'active' ? '正常' : row.status === 'blocked' ? '封禁' : '审核中' }}
-                  </el-tag>
+                  <div style="display:flex;flex-direction:column;gap:2px;">
+                    <el-tag :type="row.status === 'active' ? 'success' : row.status === 'blocked' ? 'danger' : 'warning'" size="small">
+                      {{ row.status === 'active' ? '正常' : row.status === 'blocked' ? '封禁' : '审核中' }}
+                    </el-tag>
+                    <span v-if="row.pending_reviews > 0" style="font-size:11px;color:#e6a23c;">
+                      待审: {{ row.pending_reviews }}项
+                    </span>
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column prop="chapter_count" label="章节数" width="100" />
@@ -712,10 +751,59 @@
                 <el-input-number v-model="settings.guest_time_limit" :min="1" :max="1440" />
               </el-form-item>
               <el-form-item label="维护模式">
-                <el-switch v-model="settings.maintenance_mode" />
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                  <el-switch v-model="settings.maintenance_mode" />
+                  <el-date-picker
+                    v-model="settings.maintenance_estimated_end"
+                    type="datetime"
+                    placeholder="预计完成时间（可选）"
+                    format="YYYY-MM-DD HH:00"
+                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    :disabled-date="disabledDate"
+                    style="width:220px;"
+                  />
+                </div>
+                <div v-if="settings.maintenance_mode && settings.maintenance_estimated_end" style="margin-top:6px;font-size:12px;color:#e6a23c;">
+                  预计 {{ settings.maintenance_estimated_end.replace('T', ' ') }} 完成维护
+                </div>
+              </el-form-item>
+              <el-form-item label="定时维护">
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                  <el-switch v-model="settings.maintenance_scheduled_enabled" active-text="定时开启" />
+                  <el-date-picker
+                    v-model="settings.maintenance_scheduled_time"
+                    type="datetime"
+                    placeholder="开始时间"
+                    format="YYYY-MM-DD HH:00"
+                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    :disabled-date="disabledDate"
+                    style="width:220px;"
+                  />
+                  <span style="color:#909399;">至</span>
+                  <el-date-picker
+                    v-model="settings.maintenance_scheduled_end"
+                    type="datetime"
+                    placeholder="结束时间（可选）"
+                    format="YYYY-MM-DD HH:00"
+                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    :disabled-date="disabledDate"
+                    style="width:220px;"
+                  />
+                </div>
+                <div v-if="settings.maintenance_scheduled_enabled && settings.maintenance_scheduled_time" style="margin-top:6px;font-size:12px;color:#909399;">
+                  将于 {{ settings.maintenance_scheduled_time.replace('T', ' ') }} 自动开启<template v-if="settings.maintenance_scheduled_end">，{{ settings.maintenance_scheduled_end.replace('T', ' ') }} 自动结束</template>
+                </div>
               </el-form-item>
               <el-form-item label="站点公告">
-                <el-input v-model="settings.site_notice" type="textarea" :rows="4" />
+                <div style="display:flex;gap:12px;margin-bottom:8px;align-items:center;">
+                  <el-switch v-model="settings.site_notice_enabled" active-text="启用" />
+                  <el-select v-model="settings.site_notice_type" size="small" style="width:140px;">
+                    <el-option label="信息 (蓝色)" value="info" />
+                    <el-option label="警告 (橙色)" value="warning" />
+                    <el-option label="重要 (红色)" value="danger" />
+                  </el-select>
+                </div>
+                <el-input v-model="settings.site_notice" type="textarea" :rows="4" placeholder="输入公告内容..." />
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="handleSaveSettings">保存设置</el-button>
@@ -723,11 +811,68 @@
             </el-form>
           </el-card>
         </div>
+
+        <!-- 更新日志 -->
+        <div v-if="activeTab === 'changelogs'" class="changelogs-view">
+          <el-card>
+            <template #header>
+              <div class="card-header">
+                <span>更新日志</span>
+                <el-button type="primary" size="small" @click="openChangelogDialog(null)">
+                  <el-icon><Plus /></el-icon>添加版本
+                </el-button>
+              </div>
+            </template>
+            <!-- 时间线列表 -->
+            <div v-if="changelogs.length === 0" style="text-align:center;padding:40px;color:#909399;">
+              暂无更新日志，点击"添加版本"开始记录
+            </div>
+            <div class="changelog-timeline" v-else>
+              <div
+                v-for="(entry, idx) in changelogs"
+                :key="entry.id"
+                class="changelog-entry"
+              >
+                <div class="changelog-dot" :class="'dot-' + (entry.type || 'feature')"></div>
+                <div v-if="idx < changelogs.length - 1" class="changelog-line"></div>
+                <div class="changelog-card">
+                  <div class="changelog-card-header">
+                    <div>
+                      <span class="changelog-version">{{ entry.version }}</span>
+                      <el-tag
+                        :type="entry.type === 'feature' ? 'success' : entry.type === 'bugfix' ? 'danger' : entry.type === 'breaking' ? 'danger' : 'warning'"
+                        size="small"
+                        style="margin-left:8px;"
+                      >
+                        {{ typeLabel(entry.type) }}
+                      </el-tag>
+                    </div>
+                    <span class="changelog-date">{{ entry.release_date?.split('T')[0] || entry.release_date }}</span>
+                  </div>
+                  <div class="changelog-card-title">{{ entry.title }}</div>
+                  <div class="changelog-card-changes">{{ entry.changes }}</div>
+                  <div class="changelog-card-actions">
+                    <el-button size="small" text @click="openChangelogDialog(entry)">
+                      <el-icon><Edit /></el-icon>编辑
+                    </el-button>
+                    <el-popconfirm title="确定删除此更新日志？" @confirm="handleDeleteChangelog(entry.id)">
+                      <template #reference>
+                        <el-button size="small" text type="danger">
+                          <el-icon><Delete /></el-icon>删除
+                        </el-button>
+                      </template>
+                    </el-popconfirm>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+        </div>
       </div>
     </el-main>
 
     <!-- 对话框 -->
-    <el-dialog v-model="createSubAdminDialog" title="创建次管理员" width="400px">
+    <el-dialog v-model="createSubAdminDialog" title="创建次管理员" width="420px">
       <el-form :model="subAdminForm">
         <el-form-item label="用户名">
           <el-input v-model="subAdminForm.username" placeholder="请输入用户名" />
@@ -735,10 +880,25 @@
         <el-form-item label="密码">
           <el-input v-model="subAdminForm.password" type="password" placeholder="请输入密码" show-password />
         </el-form-item>
+        <el-divider content-position="left">初始权限</el-divider>
+        <el-checkbox-group v-model="subAdminForm.permissions" class="perm-checkbox-group">
+          <el-checkbox v-for="p in allPermissionOptions" :key="p.key" :label="p.key" :value="p.key">{{ p.label }}</el-checkbox>
+        </el-checkbox-group>
       </el-form>
       <template #footer>
         <el-button @click="createSubAdminDialog = false">取消</el-button>
         <el-button type="primary" @click="handleCreateSubAdmin">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑次管理员权限对话框 -->
+    <el-dialog v-model="permDialogVisible" :title="'编辑权限 - ' + permTarget?.username" width="420px">
+      <el-checkbox-group v-model="permForm.permissions" class="perm-checkbox-group">
+        <el-checkbox v-for="p in allPermissionOptions" :key="p.key" :label="p.key" :value="p.key">{{ p.label }}</el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="permDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingPerm" @click="handleSavePermissions">保存</el-button>
       </template>
     </el-dialog>
 
@@ -834,6 +994,41 @@
         </el-table>
       </div>
     </el-dialog>
+
+    <!-- 更新日志编辑对话框 -->
+    <el-dialog v-model="changelogDialog" :title="editingChangelog ? '编辑更新日志' : '添加更新日志'" width="650px">
+      <el-form :model="changelogForm" label-width="80px">
+        <el-form-item label="版本号">
+          <el-input v-model="changelogForm.version" placeholder="如 v1.2.0" />
+        </el-form-item>
+        <el-form-item label="发布日期">
+          <el-date-picker v-model="changelogForm.release_date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" style="width:100%;" />
+        </el-form-item>
+        <el-form-item label="标题">
+          <el-input v-model="changelogForm.title" placeholder="如：新增自动审核功能" />
+        </el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="changelogForm.type" style="width:100%;">
+            <el-option label="新功能 (feature)" value="feature" />
+            <el-option label="优化改进 (improvement)" value="improvement" />
+            <el-option label="问题修复 (bugfix)" value="bugfix" />
+            <el-option label="重大变更 (breaking)" value="breaking" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="更新内容">
+          <el-input v-model="changelogForm.changes" type="textarea" :rows="8" placeholder="每行一条更新内容，如：&#10;- 新增自动审核功能&#10;- 优化首页加载速度&#10;- 修复登录闪退问题" />
+          <div style="margin-top:6px;">
+            <el-button size="small" text type="primary" @click="applyChangelogTemplate">
+              <el-icon><MagicStick /></el-icon>应用模板
+            </el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="changelogDialog = false">取消</el-button>
+        <el-button type="primary" :loading="savingChangelog" @click="handleSaveChangelog">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -842,7 +1037,8 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Setting, DataAnalysis, User, UserFilled, DocumentChecked, Warning,
-  Reading, Memo, Tools, Document, Monitor, Ticket
+  Reading, Memo, Tools, Document, Monitor, Ticket,
+  Notebook
 } from '@element-plus/icons-vue'
 import adminApi from '../api/admin'
 import { useUserStore } from '../stores/user'
@@ -863,13 +1059,23 @@ const menuTitle = computed(() => {
     'invite-codes': '邀请码管理',
     'sensitive-words': '敏感词管理',
     devices: '受信任设备',
-    settings: '系统设置'
+    settings: '系统设置',
+    changelogs: '更新日志'
   }
   return titles[activeTab.value]
 })
 
 const username = computed(() => userStore.user?.username || '管理员')
 const isSuperAdmin = computed(() => userStore.user?.role === 'super_admin')
+const isSubAdmin = computed(() => userStore.user?.role === 'admin')
+const adminPermissions = computed(() => userStore.user?.permissions || [])
+
+// 检查是否有指定权限（超级管理员始终全权限）
+const hasPermission = (key) => {
+  if (isSuperAdmin.value) return true
+  if (!isSubAdmin.value) return false
+  return adminPermissions.value.includes(key)
+}
 
 // 统计数据
 const stats = ref({})
@@ -891,7 +1097,52 @@ const subAdminPage = ref(1)
 const subAdminPageSize = ref(20)
 const subAdminTotal = ref(0)
 const createSubAdminDialog = ref(false)
-const subAdminForm = ref({ username: '', password: '' })
+const subAdminForm = ref({ username: '', password: '', permissions: ['reviews', 'reports', 'novels', 'sensitive-words'] })
+
+// 权限编辑
+const permDialogVisible = ref(false)
+const permTarget = ref(null)
+const permForm = ref({ permissions: [] })
+const savingPerm = ref(false)
+
+const allPermissionOptions = [
+  { key: 'dashboard', label: '数据概览' },
+  { key: 'users', label: '用户管理' },
+  { key: 'reviews', label: '内容审核' },
+  { key: 'reports', label: '举报处理' },
+  { key: 'novels', label: '小说管理' },
+  { key: 'logs', label: '操作日志' },
+  { key: 'invite-codes', label: '邀请码管理' },
+  { key: 'sensitive-words', label: '敏感词管理' },
+  { key: 'devices', label: '受信任设备' },
+  { key: 'settings', label: '系统设置' },
+  { key: 'changelogs', label: '更新日志' }
+]
+
+const permLabel = (key) => {
+  const found = allPermissionOptions.find(p => p.key === key)
+  return found ? found.label : key
+}
+
+const openPermDialog = (row) => {
+  permTarget.value = row
+  permForm.value.permissions = [...(row.permissions || [])]
+  permDialogVisible.value = true
+}
+
+const handleSavePermissions = async () => {
+  savingPerm.value = true
+  try {
+    await adminApi.updateSubAdmin(permTarget.value.id, permForm.value.permissions)
+    ElMessage.success('权限已更新')
+    permDialogVisible.value = false
+    loadSubAdmins()
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    savingPerm.value = false
+  }
+}
 
 // 内容审核
 const reviews = ref([])
@@ -905,6 +1156,8 @@ const currentReview = ref(null)
 const aiChecking = ref(false)
 const aiCheckDialog = ref(false)
 const aiCheckResultHtml = ref('')
+const selectedReviews = ref([])
+const batchReviewing = ref(false)
 
 // 举报处理
 const reports = ref([])
@@ -966,7 +1219,13 @@ const settings = ref({
   max_chapters_per_novel: 500,
   guest_time_limit: 10,
   maintenance_mode: false,
-  site_notice: ''
+  maintenance_estimated_end: '',
+  maintenance_scheduled_enabled: false,
+  maintenance_scheduled_time: '',
+  maintenance_scheduled_end: '',
+  site_notice: '',
+  site_notice_enabled: false,
+  site_notice_type: 'info'
 })
 
 const handleMenuSelect = (index) => {
@@ -1008,6 +1267,9 @@ const loadData = async () => {
       break
     case 'settings':
       await loadSettings()
+      break
+    case 'changelogs':
+      await loadChangelogs()
       break
   }
 }
@@ -1095,6 +1357,30 @@ const loadReports = async () => {
   }
 }
 
+// 举报类型标签提取（从reason字段解析反馈类型）
+const getReportTypeLabel = (row) => {
+  const typeMap = { bug: '功能故障', suggestion: '产品建议', content: '内容举报', other: '其他', novel: '小说举报', chapter: '章节举报', user: '用户举报' }
+  if (row.type && row.type !== 'other') return typeMap[row.type] || row.type
+  const match = row.reason?.match(/【(.+?)】/)
+  return match ? match[1] : typeMap[row.type] || row.type
+}
+const getReportTypeTag = (row) => {
+  const typeMap = { bug: 'danger', suggestion: '', content: 'warning', other: 'info', novel: 'warning', chapter: 'warning', user: 'danger' }
+  if (row.type && row.type !== 'other') return typeMap[row.type] || 'info'
+  const match = row.reason?.match(/【(.+?)】/)
+  const label = match ? match[1] : ''
+  if (label.includes('故障')) return 'danger'
+  if (label.includes('建议')) return 'success'
+  if (label.includes('举报')) return 'warning'
+  return 'info'
+}
+const getReportReason = (row) => {
+  if (!row.reason) return '-'
+  // 去掉【类型】前缀，只显示实际内容
+  const cleaned = row.reason.replace(/^【.+?】\s*\n?/, '')
+  return cleaned || row.reason
+}
+
 const loadNovels = async () => {
   try {
     loading.value = true
@@ -1132,8 +1418,24 @@ const loadSettings = async () => {
   try {
     loading.value = true
     const res = await adminApi.getSettings()
-    Object.assign(settings.value, res.data)
-    inviteOnly.value = res.data.invite_only === 'true'
+    const data = res.data || {}
+    // 类型转换：数据库存储的是字符串，需要转换回正确的JS类型
+    settings.value = {
+      auto_review: data.auto_review === 'true' || data.auto_review === '1',
+      sensitive_words: data.sensitive_words || '',
+      max_novels_per_user: parseInt(data.max_novels_per_user) || 50,
+      max_chapters_per_novel: parseInt(data.max_chapters_per_novel) || 500,
+      guest_time_limit: parseInt(data.guest_time_limit) || 10,
+      maintenance_mode: data.maintenance_mode === 'true' || data.maintenance_mode === '1',
+      maintenance_estimated_end: data.maintenance_estimated_end || '',
+      maintenance_scheduled_enabled: data.maintenance_scheduled_enabled === 'true' || data.maintenance_scheduled_enabled === '1',
+      maintenance_scheduled_time: data.maintenance_scheduled_time || '',
+      maintenance_scheduled_end: data.maintenance_scheduled_end || '',
+      site_notice: data.site_notice || '',
+      site_notice_enabled: data.site_notice_enabled === 'true' || data.site_notice_enabled === '1',
+      site_notice_type: data.site_notice_type || 'info'
+    }
+    inviteOnly.value = data.invite_only === 'true' || data.invite_only === '1'
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -1278,10 +1580,10 @@ const handleCreateSubAdmin = async () => {
       ElMessage.warning('请填写用户名和密码')
       return
     }
-    await adminApi.createSubAdmin(subAdminForm.value.username, subAdminForm.value.password)
+    await adminApi.createSubAdmin(subAdminForm.value.username, subAdminForm.value.password, subAdminForm.value.permissions)
     ElMessage.success('次管理员创建成功')
     createSubAdminDialog.value = false
-    subAdminForm.value = { username: '', password: '' }
+    subAdminForm.value = { username: '', password: '', permissions: ['reviews', 'reports', 'novels', 'sensitive-words'] }
     loadSubAdmins()
   } catch (error) {
     ElMessage.error(error.message)
@@ -1319,6 +1621,28 @@ const confirmReview = async () => {
   }
 }
 
+const handleBatchReview = async (status) => {
+  try {
+    const label = status === 'approved' ? '通过' : '拒绝'
+    await ElMessageBox.confirm(
+      `确定要批量${label} ${selectedReviews.value.length} 条内容吗？`,
+      '批量审核',
+      { type: 'warning' }
+    )
+    batchReviewing.value = true
+    const ids = selectedReviews.value.map(r => r.id)
+    await adminApi.batchReviewContent(ids, status)
+    ElMessage.success(`已批量${label} ${ids.length} 条内容`)
+    selectedReviews.value = []
+    loadReviews()
+    loadDashboard()
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error(error.message || '批量审核失败')
+  } finally {
+    batchReviewing.value = false
+  }
+}
+
 const handleViewReview = (row) => {
   ElMessageBox.alert(row.content, '内容详情', {
     confirmButtonText: '关闭'
@@ -1335,9 +1659,26 @@ const handleAICheck = async (row) => {
   aiChecking.value = true
   try {
     const res = await adminApi.aiCheckReview(row.id)
-    aiCheckResultHtml.value = escapeHtml(res.data.result)
+    const parsed = res.data.parsed
+    let html = ''
+    // 显示解析结果摘要
+    if (parsed) {
+      const decisionMap = { approved: '✅ 通过', rejected: '❌ 违规', pending: '⚠️ 需人工复核' }
+      const riskMap = { low: '低', medium: '中', high: '高' }
+      html += `<div style="margin-bottom:12px;padding:10px;background:rgba(0,0,0,0.03);border-radius:6px;">`
+      html += `<div style="font-size:16px;font-weight:700;margin-bottom:6px;">${decisionMap[parsed.decision] || parsed.decision}</div>`
+      html += `<div style="font-size:13px;color:#606266;">风险等级：<strong>${riskMap[parsed.riskLevel] || parsed.riskLevel}</strong></div>`
+      html += `<div style="font-size:13px;color:#606266;">${escapeHtml(parsed.reason || '')}</div>`
+      html += `</div>`
+    }
+    // 显示原始AI结果
+    html += '<div style="border-top:1px solid #ebeef5;padding-top:10px;margin-top:8px;">'
+    html += '<div style="font-size:12px;color:#909399;margin-bottom:6px;">AI原始输出：</div>'
+    html += escapeHtml(res.data.result)
       .replace(/\n/g, '<br>')
       .replace(/【(.+?)】/g, '<strong style="color:#fb7185">【$1】</strong>')
+    html += '</div>'
+    aiCheckResultHtml.value = html
     aiCheckDialog.value = true
   } catch (error) {
     ElMessage.error(error.message || 'AI检测失败')
@@ -1398,6 +1739,97 @@ const handleDeleteNovel = async (row) => {
     loadNovels()
   } catch (error) {
     if (error !== 'cancel') ElMessage.error(error.message)
+  }
+}
+
+// 定时维护：禁止选择过去的时间
+const disabledDate = (time) => {
+  return time.getTime() < Date.now() - 3600000 // 允许当前小时内
+}
+
+// ===== 更新日志 =====
+const changelogs = ref([])
+const changelogDialog = ref(false)
+const savingChangelog = ref(false)
+const editingChangelog = ref(null)
+const changelogForm = ref({
+  version: '',
+  release_date: '',
+  title: '',
+  changes: '',
+  type: 'feature'
+})
+
+const typeLabel = (t) => ({ feature: '新功能', improvement: '优化', bugfix: '修复', breaking: '重大' }[t] || t)
+
+const applyChangelogTemplate = () => {
+  const now = new Date()
+  changelogForm.value.release_date = now.toISOString().split('T')[0]
+  if (!changelogForm.value.title) changelogForm.value.title = '系统更新'
+  if (!changelogForm.value.changes) {
+    changelogForm.value.changes = '- 新增：\n- 优化：\n- 修复：\n- 其他：'
+  }
+}
+
+const loadChangelogs = async () => {
+  try {
+    loading.value = true
+    const res = await adminApi.getChangelogs()
+    changelogs.value = res.data || []
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+const openChangelogDialog = (entry) => {
+  if (entry) {
+    editingChangelog.value = entry
+    changelogForm.value = {
+      version: entry.version || '',
+      release_date: entry.release_date?.split('T')[0] || '',
+      title: entry.title || '',
+      changes: entry.changes || '',
+      type: entry.type || 'feature'
+    }
+  } else {
+    editingChangelog.value = null
+    changelogForm.value = { version: '', release_date: '', title: '', changes: '', type: 'feature' }
+  }
+  changelogDialog.value = true
+}
+
+const handleSaveChangelog = async () => {
+  if (!changelogForm.value.version || !changelogForm.value.release_date || !changelogForm.value.title || !changelogForm.value.changes) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+  savingChangelog.value = true
+  try {
+    if (editingChangelog.value) {
+      await adminApi.updateChangelog(editingChangelog.value.id, changelogForm.value)
+      ElMessage.success('已更新')
+    } else {
+      await adminApi.createChangelog(changelogForm.value)
+      ElMessage.success('已添加')
+    }
+    changelogDialog.value = false
+    loadChangelogs()
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    savingChangelog.value = false
+  }
+}
+
+const handleDeleteChangelog = async (id) => {
+  try {
+    await adminApi.deleteChangelog(id)
+    ElMessage.success('已删除')
+    loadChangelogs()
+  } catch (error) {
+    ElMessage.error(error.message)
   }
 }
 
@@ -1526,28 +1958,31 @@ onMounted(() => {
 .admin-panel {
   display: flex;
   height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-page);
 }
 
 .admin-sidebar {
-  background: #304156;
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
   color: #fff;
   display: flex;
   flex-direction: column;
+  border-right: 1px solid rgba(255,255,255,0.06);
 }
 
 .sidebar-header {
-  height: 60px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   font-size: 18px;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebar-header .el-icon {
-  margin-right: 10px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .sidebar-menu {
@@ -1555,18 +1990,21 @@ onMounted(() => {
   border: none;
   background: transparent;
 }
-
 .sidebar-menu :deep(.el-menu-item) {
-  color: #bfcbd9;
+  color: #94a3b8;
+  margin: 2px 8px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
 }
-
 .sidebar-menu :deep(.el-menu-item:hover) {
-  background: #263445;
+  background: rgba(255,255,255,0.06);
+  color: #e2e8f0;
 }
-
 .sidebar-menu :deep(.el-menu-item.is-active) {
-  background: #409eff;
+  background: var(--gradient-primary);
   color: #fff;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(244,63,94,0.25);
 }
 
 .badge {
@@ -1588,34 +2026,26 @@ onMounted(() => {
 }
 
 .admin-header {
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  border-bottom: 1px solid var(--border-glass);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 24px;
+  height: 60px;
 }
-
 .header-left h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.admin-info {
-  color: #606266;
-}
-
-.admin-content {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
-}
+.header-right { display: flex; align-items: center; gap: 16px; }
+.admin-info { color: var(--text-secondary); font-weight: 500; font-size: var(--text-sm); }
+.admin-content { flex: 1; padding: 24px; overflow-y: auto; }
 
 .stats-cards {
   margin-bottom: 20px;
@@ -1623,51 +2053,39 @@ onMounted(() => {
 
 .stat-card {
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all var(--transition-spring);
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-glass) !important;
+  box-shadow: var(--shadow-card) !important;
+  overflow: hidden;
+  position: relative;
 }
-
+.stat-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--gradient-primary);
+}
 .stat-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover) !important;
 }
-
-.stat-content {
-  display: flex;
-  align-items: center;
-}
-
+.stat-content { display: flex; align-items: center; }
 .stat-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 15px;
-  font-size: 24px;
+  width: 52px; height: 52px;
+  border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  margin-right: 16px; font-size: 24px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
 }
-
-.user-icon { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
-.novel-icon { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: #fff; }
-.chapter-icon { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: #fff; }
-.review-icon { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: #fff; }
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #303133;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-  margin-top: 5px;
-}
-
-.stat-trend {
-  font-size: 12px;
-  color: #67c23a;
-  margin-top: 5px;
-}
+.user-icon { background: var(--gradient-primary); color: #fff; }
+.novel-icon { background: linear-gradient(135deg, #a855f7, #6366f1); color: #fff; }
+.chapter-icon { background: var(--gradient-accent); color: #fff; }
+.review-icon { background: var(--gradient-warm); color: #fff; }
+.stat-value { font-size: 28px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.02em; }
+.stat-label { font-size: var(--text-sm); color: var(--text-muted); margin-top: 4px; }
+.stat-trend { font-size: var(--text-xs); color: var(--success); margin-top: 4px; font-weight: 500; }
 
 .charts-row {
   margin-bottom: 20px;
@@ -1692,16 +2110,16 @@ onMounted(() => {
 .trend-bar {
   flex: 1;
   height: 20px;
-  background: #f5f7fa;
-  border-radius: 10px;
+  background: #f1f5f9;
+  border-radius: var(--radius-full);
   margin: 0 15px;
   overflow: hidden;
 }
-
 .trend-fill {
   height: 100%;
-  background: linear-gradient(90deg, #409eff 0%, #67c23a 100%);
-  transition: width 0.3s;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.5s var(--ease-out-expo);
 }
 
 .trend-count {
@@ -1716,6 +2134,113 @@ onMounted(() => {
   align-items: center;
 }
 
+/* ===== 更新日志时间线 ===== */
+.changelog-timeline {
+  position: relative;
+  padding-left: 24px;
+}
+
+.changelog-entry {
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.changelog-dot {
+  position: absolute;
+  left: -29px;
+  top: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #409EFF;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #409EFF;
+  z-index: 1;
+}
+.dot-feature { background: #67C23A; box-shadow: 0 0 0 2px #67C23A; }
+.dot-improvement { background: #E6A23C; box-shadow: 0 0 0 2px #E6A23C; }
+.dot-bugfix { background: #F56C6C; box-shadow: 0 0 0 2px #F56C6C; }
+.dot-breaking { background: #F56C6C; box-shadow: 0 0 0 2px #F56C6C; }
+
+.changelog-line {
+  position: absolute;
+  left: -25px;
+  top: 20px;
+  bottom: 0;
+  width: 2px;
+  background: #e4e7ed;
+}
+
+.changelog-card {
+  background: var(--bg-glass, rgba(255,255,255,0.72));
+  border: 1px solid var(--border-glass, rgba(0,0,0,0.06));
+  border-radius: var(--radius-lg, 12px);
+  padding: 16px 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.changelog-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.changelog-version {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.changelog-date {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.changelog-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.changelog-card-changes {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.perm-checkbox-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+
+.changelog-card-actions {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-light, rgba(0,0,0,0.04));
+}
+
+.batch-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 8px;
+}
+
+.batch-selected-count {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+  margin-right: 8px;
+}
+
 .pagination {
   margin-top: 20px;
   display: flex;
@@ -1727,109 +2252,39 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
-  .admin-layout {
-    flex-direction: column;
-  }
-
-  .admin-sidebar {
-    width: 100% !important;
-    max-height: 60px;
-    overflow: hidden;
-  }
-
-  .admin-sidebar .el-menu {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-
-  .admin-sidebar .el-menu-item {
-    flex-shrink: 0;
-    padding: 0 12px !important;
-    font-size: 13px;
-  }
-
-  .admin-header {
-    flex-wrap: wrap;
-    padding: 10px 12px;
-    gap: 8px;
-  }
-
-  .header-left h2 {
-    font-size: 16px;
-  }
-
-  .header-right {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .admin-content {
-    padding: 12px;
-  }
-
-  .stats-cards :deep(.el-col) {
-    margin-bottom: 10px;
-  }
-
-  .stat-card {
-    font-size: 14px;
-  }
-
-  .stat-value {
-    font-size: 24px !important;
-  }
-
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .card-header .el-button {
-    width: 100%;
-  }
-
-  :deep(.el-table) {
-    font-size: 12px;
-  }
-
-  :deep(.el-table .cell) {
-    padding: 6px 8px !important;
-  }
-
-  .admin-info {
-    display: none;
-  }
+  .admin-sidebar { width: 100% !important; max-height: 56px; overflow: hidden; }
+  .admin-sidebar .el-menu { display: flex; flex-direction: row; overflow-x: auto; }
+  .admin-sidebar .el-menu-item { flex-shrink: 0; padding: 0 12px !important; font-size: 13px; margin: 0 2px !important; }
+  .admin-header { flex-wrap: wrap; padding: 10px 16px; gap: 8px; height: auto; min-height: 56px; }
+  .header-left h2 { font-size: var(--text-base); }
+  .header-right { width: 100%; justify-content: flex-end; }
+  .admin-content { padding: 16px; }
+  .stat-value { font-size: 24px !important; }
+  .card-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .card-header .el-button { width: 100%; }
+  .admin-info { display: none; }
 }
-
 @media (max-width: 480px) {
-  .admin-content {
-    padding: 8px;
-  }
-
-  .admin-header {
-    padding: 8px 10px;
-  }
-
-  .header-left h2 {
-    font-size: 14px;
-  }
-
-  .stat-value {
-    font-size: 20px !important;
-  }
-
-  :deep(.el-dialog) {
-    width: 98% !important;
-  }
+  .admin-content { padding: 12px; }
+  .admin-header { padding: 8px 12px; }
+  .header-left h2 { font-size: 14px; }
+  .stat-value { font-size: 20px !important; }
+}
+.reason-cell {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  font-size: 13px;
+  max-height: 80px;
+  overflow-y: auto;
 }
 
 .test-result-box {
-  background: #f5f7fa;
-  border-radius: 8px;
+  background: var(--bg-glass);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
   padding: 16px;
   white-space: pre-wrap;
   line-height: 1.8;
+  font-family: var(--font-mono);
 }
 </style>

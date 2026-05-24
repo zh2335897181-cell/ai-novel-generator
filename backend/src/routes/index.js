@@ -1,6 +1,7 @@
 import express from 'express';
 import novelController from '../controllers/novelController.js';
 import authController from '../controllers/authController.js';
+import adminController from '../controllers/adminController.js';
 import * as timelineController from '../controllers/timelineController.js';
 import { runValidationTests, runAllTests } from '../utils/testRunner.js';
 import { resolveAIConfig } from '../utils/aiClient.js';
@@ -10,6 +11,9 @@ const router = express.Router();
 // 公开书架路由
 router.get('/public/bookshelf', novelController.getPublicNovels);
 router.get('/public/novels/:novelId', novelController.getPublicNovelDetail);
+
+// 公开反馈/举报提交（无需管理员权限）
+router.post('/reports', (req, res) => adminController.createReport(req, res));
 
 // 认证相关路由
 router.post('/auth/register', authController.register);
@@ -35,6 +39,7 @@ router.get('/novels/:novelId/characters', novelController.getCharacters);
 router.post('/novels/parse-outline', novelController.parseOutline);
 router.post('/novels/chapter-outlines', novelController.generateChapterOutlines);
 router.get('/novels/:novelId/chapter-outlines', novelController.getChapterOutlines);
+router.post('/novels/:novelId/chapters/:chapterId/regenerate-outline', novelController.regenerateChapterOutline);
 router.post('/novels/toc', novelController.generateTOC);
 router.post('/novels/plot-suggestions', novelController.getPlotSuggestions);
 
@@ -44,6 +49,12 @@ router.post('/novels/:novelId/resubmit-review', (req, res) => novelController.re
 
 // 角色对话相关路由
 router.post('/novels/:novelId/dialogue', (req, res) => novelController.generateDialogue(req, res));
+
+// 小说深度分析路由
+router.post('/novels/:novelId/deep-analysis', (req, res) => novelController.analyzeNovelDeeply(req, res));
+
+// 章节删除路由
+router.delete('/novels/:novelId/chapters/:chapterId', (req, res) => novelController.deleteChapter(req, res));
 
 // 测试相关路由
 router.post('/tests/run', async (req, res) => {

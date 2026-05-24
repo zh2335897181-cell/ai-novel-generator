@@ -365,10 +365,32 @@ class NovelService {
       try {
         const [[novelRow]] = await conn.query('SELECT user_id FROM novel WHERE id = ?', [novelId]);
         if (novelRow) {
-          await conn.query(
+          // 设置小说状态为审核中
+          await conn.query("UPDATE novel SET status = 'reviewing' WHERE id = ? AND status != 'reviewing'", [novelId]);
+
+          const [reviewResult] = await conn.query(
             'INSERT INTO content_review (content_type, content_id, novel_id, content, user_id, status) VALUES (?, ?, ?, ?, ?, ?)',
             ['chapter', contentResult.insertId, novelId, storyContent, novelRow.user_id, 'pending']
           );
+
+          // 检查是否开启自动审核
+          const [settingsRows] = await conn.query("SELECT `value` FROM system_settings WHERE `key` = 'auto_review'");
+          if (settingsRows.length > 0 && (settingsRows[0].value === 'true' || settingsRows[0].value === '1')) {
+            try {
+              const { callAIForContentReview, parseAIReviewDecision } = await import('../utils/autoReview.js');
+              const aiText = await callAIForContentReview(storyContent);
+              const result = parseAIReviewDecision(aiText);
+              if (result.decision === 'approved' || result.decision === 'rejected') {
+                await conn.query(
+                  'UPDATE content_review SET status = ?, reason = ?, reviewer_id = ?, reviewed_at = NOW() WHERE id = ?',
+                  [result.decision, result.reason, 0, reviewResult.insertId]
+                );
+                console.log(`[AutoReview] 自动审核完成: ${result.decision}, risk: ${result.riskLevel}`);
+              }
+            } catch (autoReviewErr) {
+              console.warn('[AutoReview] AI自动审核失败，留待人工审核:', autoReviewErr.message);
+            }
+          }
         }
       } catch (reviewErr) {
         console.warn('[Review] 提交审核队列失败:', reviewErr.message);
@@ -552,6 +574,72 @@ class NovelService {
     } catch (error) {
       await conn.rollback();
       console.error('章节大纲生成失败:', error);
+      throw error;
+    } finally {
+      conn.release();
+    }
+  }
+
+  // 重新生成单个章节大纲
+  async regenerateSingleChapterOutline(novelId, chapterId, aiConfig) {
+    const conn = await pool.getConnection();
+    try {
+      // 1. 查询目标章节信息
+      const [chapters] = await conn.query(
+        'SELECT * FROM chapter_outline WHERE id = ? AND novel_id = ?',
+        [chapterId, novelId]
+      );
+      if (chapters.length === 0) {
+        throw new Error('章节不存在');
+      }
+      const chapter = chapters[0];
+
+      // 2. 查询相邻章节上下文
+      const [prevChapters] = await conn.query(
+        'SELECT chapter_number, title, outline FROM chapter_outline WHERE novel_id = ? AND chapter_number < ? ORDER BY chapter_number DESC LIMIT 1',
+        [novelId, chapter.chapter_number]
+      );
+      const [nextChapters] = await conn.query(
+        'SELECT chapter_number, title, outline FROM chapter_outline WHERE novel_id = ? AND chapter_number > ? ORDER BY chapter_number ASC LIMIT 1',
+        [novelId, chapter.chapter_number]
+      );
+
+      // 3. 查询世界观、角色等上下文
+      const [worldState] = await conn.query('SELECT * FROM world_state WHERE novel_id = ?', [novelId]);
+      const [characters] = await conn.query('SELECT * FROM character_state WHERE novel_id = ?', [novelId]);
+      const [items] = await conn.query('SELECT * FROM item_state WHERE novel_id = ?', [novelId]);
+      const [locations] = await conn.query('SELECT * FROM location_state WHERE novel_id = ?', [novelId]);
+      const [summary] = await conn.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
+
+      // 4. 构建章节信息
+      const chapterInfo = {
+        chapter_number: chapter.chapter_number,
+        title: chapter.title,
+        outline: chapter.outline,
+        prevChapter: prevChapters[0] || null,
+        nextChapter: nextChapters[0] || null
+      };
+
+      // 5. 调用AI重新生成
+      const result = await aiClient.regenerateSingleChapterOutline(
+        worldState[0],
+        characters,
+        summary[0]?.summary,
+        chapterInfo,
+        items,
+        locations,
+        aiConfig
+      );
+
+      // 6. 更新数据库
+      await conn.query(
+        'UPDATE chapter_outline SET outline = ? WHERE id = ?',
+        [result.outline, chapterId]
+      );
+
+      return result;
+    } catch (error) {
+      console.error('单章大纲生成失败:', error);
       throw error;
     } finally {
       conn.release();
@@ -893,10 +981,32 @@ class NovelService {
         try {
           const [[novelRow]] = await conn.query('SELECT user_id FROM novel WHERE id = ?', [novelId]);
           if (novelRow) {
-            await conn.query(
+            // 设置小说状态为审核中
+            await conn.query("UPDATE novel SET status = 'reviewing' WHERE id = ? AND status != 'reviewing'", [novelId]);
+
+            const [reviewResult] = await conn.query(
               'INSERT INTO content_review (content_type, content_id, novel_id, content, user_id, status) VALUES (?, ?, ?, ?, ?, ?)',
               ['chapter', savedStoryContentId, novelId, fullContent, novelRow.user_id, 'pending']
             );
+
+            // 检查是否开启自动审核
+            const [settingsRows] = await conn.query("SELECT `value` FROM system_settings WHERE `key` = 'auto_review'");
+            if (settingsRows.length > 0 && (settingsRows[0].value === 'true' || settingsRows[0].value === '1')) {
+              try {
+                const { callAIForContentReview, parseAIReviewDecision } = await import('../utils/autoReview.js');
+                const aiText = await callAIForContentReview(fullContent);
+                const result = parseAIReviewDecision(aiText);
+                if (result.decision === 'approved' || result.decision === 'rejected') {
+                  await conn.query(
+                    'UPDATE content_review SET status = ?, reason = ?, reviewer_id = ?, reviewed_at = NOW() WHERE id = ?',
+                    [result.decision, result.reason, 0, reviewResult.insertId]
+                  );
+                  console.log(`[AutoReview] 自动审核完成(stream): ${result.decision}, risk: ${result.riskLevel}`);
+                }
+              } catch (autoReviewErr) {
+                console.warn('[AutoReview] AI自动审核失败，留待人工审核:', autoReviewErr.message);
+              }
+            }
           }
         } catch (reviewErr) {
           console.warn('[Review] 提交审核队列失败:', reviewErr.message);
@@ -1352,6 +1462,35 @@ ${recentStory || '故事刚开始'}
     return { chapter_number: nextChapterNum, title, content: filtered, word_count: filtered.length };
   }
 
+  // 删除章节
+  async deleteChapter(novelId, chapterId) {
+    const conn = await pool.getConnection();
+    try {
+      const [[chapter]] = await conn.query(
+        'SELECT id FROM story_content WHERE id = ? AND novel_id = ?',
+        [chapterId, novelId]
+      );
+      if (!chapter) {
+        throw new Error('章节不存在或不属于该小说');
+      }
+
+      await conn.query(
+        'DELETE FROM story_content WHERE id = ? AND novel_id = ?',
+        [chapterId, novelId]
+      );
+
+      // 同步删除 RAG 分块
+      await conn.query(
+        'DELETE FROM rag_chunk WHERE source_id = ? AND source_type = ?',
+        [chapterId, 'story']
+      );
+    } catch (error) {
+      throw error;
+    } finally {
+      conn.release();
+    }
+  }
+
   // 获取小说审核记录
   async getNovelReviews(novelId) {
     const [reviews] = await pool.query(
@@ -1363,6 +1502,68 @@ ${recentStory || '故事刚开始'}
       [novelId]
     );
     return reviews;
+  }
+
+  // 小说深度分析
+  async analyzeNovelDeeply(novelId, aiConfig, sendSSE) {
+    // 1. 查询所有章节内容
+    const [chapters] = await pool.query(
+      `SELECT chapter_number, chapter_title, content FROM story_content
+       WHERE novel_id = ? AND content_type != 'dialogue'
+       ORDER BY chapter_number ASC`,
+      [novelId]
+    );
+
+    if (!chapters.length) {
+      sendSSE({ type: 'error', message: '小说暂无内容，请先生成章节后再进行分析' });
+      return;
+    }
+
+    // 2. 查询世界设定
+    const [worldState] = await pool.query(
+      'SELECT * FROM world_state WHERE novel_id = ?',
+      [novelId]
+    );
+
+    // 3. 查询角色列表
+    const [characters] = await pool.query(
+      'SELECT * FROM character_state WHERE novel_id = ? ORDER BY id',
+      [novelId]
+    );
+
+    // 4. Phase: 准备阶段
+    sendSSE({ type: 'phase', phase: 'prepare', message: `正在收集小说全部内容（共${chapters.length}章）...` });
+
+    let fullResponse = '';
+
+    // 5. Phase: 分析阶段
+    sendSSE({ type: 'phase', phase: 'writing_style', message: '正在深度分析写作风格与主题思想...' });
+
+    try {
+      fullResponse = await aiClient.analyzeWritingStyleAndTheme(
+        chapters,
+        worldState[0] || {},
+        characters,
+        aiConfig,
+        (chunk) => {
+          sendSSE({ type: 'content', content: chunk });
+        }
+      );
+    } catch (error) {
+      sendSSE({ type: 'error', message: 'AI分析失败：' + error.message });
+      return;
+    }
+
+    // 6. Phase: 整合报告
+    sendSSE({ type: 'phase', phase: 'finalize', message: '正在整合分析报告...' });
+
+    // 7. 发送完成事件（AI返回的是纯文本文学评论，直接传给前端）
+    if (!fullResponse.trim()) {
+      sendSSE({ type: 'error', message: 'AI未返回分析内容，请重试' });
+      return;
+    }
+
+    sendSSE({ type: 'done', data: fullResponse });
   }
 
   // 重新提交小说审核

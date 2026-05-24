@@ -42,7 +42,7 @@ class AIClient {
   }
 
   // 流式聊天（新增）
-  async chatStream(messages, temperature = 0.7, config, onChunk) {
+  async chatStream(messages, temperature = 0.7, config, onChunk, maxTokens = 2000) {
     const apiKey = config?.apiKey || process.env.AI_API_KEY;
     const baseURL = config?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
     const model = config?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
@@ -58,7 +58,7 @@ class AIClient {
           model: model,
           messages: messages,
           temperature: temperature,
-          max_tokens: 2000,
+          max_tokens: maxTokens,
           stream: true,
           response_format: { type: 'text' }
         },
@@ -632,6 +632,100 @@ ${summary || '故事刚开始'}
 现在开始生成章节大纲：`;
   }
 
+  // 重新生成单个章节的大纲
+  async regenerateSingleChapterOutline(worldState, characters, summary, chapterInfo, items, locations, config) {
+    const prompt = this.buildSingleChapterOutlinePrompt(worldState, characters, summary, chapterInfo, items, locations);
+    const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 4096);
+
+    try {
+      let cleanResult = result.trim();
+      if (cleanResult.startsWith('```json')) {
+        cleanResult = cleanResult.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      } else if (cleanResult.startsWith('```')) {
+        cleanResult = cleanResult.replace(/```\n?/g, '');
+      }
+      return JSON.parse(cleanResult);
+    } catch (error) {
+      console.error('单章大纲生成失败，原始内容:', result);
+      throw new Error('AI生成失败，请重试');
+    }
+  }
+
+  buildSingleChapterOutlinePrompt(worldState, characters, summary, chapterInfo, items = [], locations = []) {
+    const characterList = characters.map(c => {
+      const realmOrLevel = c.realm || `Lv.${c.level}`;
+      return `【${c.name}】${realmOrLevel} | 状态:${c.status}`;
+    }).join('\n');
+
+    const aliveCharacters = characters.filter(c => c.status !== '死亡').map(c => c.name).join('、');
+    const deadCharacters = characters.filter(c => c.status === '死亡').map(c => c.name).join('、');
+
+    const itemList = items.length > 0
+      ? items.map(i => `【${i.name}】类型:${i.type || '未知'} | 持有者:${i.owner || '无'} | 状态:${i.status}`).join('\n')
+      : '暂无';
+
+    const locationList = locations.length > 0
+      ? locations.map(l => `【${l.name}】类型:${l.type || '未知'} | 状态:${l.status} | 描述:${l.description || '无'}`).join('\n')
+      : '暂无';
+
+    // 获取相邻章节的上下文
+    const prevChapter = chapterInfo.prevChapter
+      ? `第${chapterInfo.prevChapter.chapter_number}章《${chapterInfo.prevChapter.title}》：${chapterInfo.prevChapter.outline}`
+      : '无（这是第一章）';
+    const nextChapter = chapterInfo.nextChapter
+      ? `第${chapterInfo.nextChapter.chapter_number}章《${chapterInfo.nextChapter.title}》：${chapterInfo.nextChapter.outline}`
+      : '无（这是最后一章）';
+
+    return `你是一个专业的小说大纲规划AI。请为第${chapterInfo.chapter_number}章《${chapterInfo.title}》重新生成一个详细的大纲。
+
+======================== 世界设定（来自world_state表）========================
+【类型】${worldState?.genre || '未知'}
+【风格】${worldState?.style || '未知'}
+【规则】${worldState?.rules || '无'}
+【背景】${worldState?.background || '无'}
+
+======================== 角色状态（来自character_state表）========================
+${characterList}
+
+存活角色：${aliveCharacters || '无'}
+已死亡角色：${deadCharacters || '无'}
+
+======================== 物品状态（来自item_state表）========================
+${itemList}
+
+======================== 地点状态（来自location_state表）========================
+${locationList}
+
+======================== 当前剧情摘要（来自story_summary表）========================
+${summary || '故事刚开始'}
+
+======================== 相邻章节上下文 ========================
+上一章：${prevChapter}
+下一章：${nextChapter}
+
+======================== 输出要求 ========================
+请为第${chapterInfo.chapter_number}章《${chapterInfo.title}》生成一个200字以内的详细大纲。
+
+大纲要求：
+1. 必须与上一章和下一章的内容自然衔接，保持故事连贯性
+2. 包含本章的主要角色、核心事件、涉及的地点
+3. 符合小说的类型和风格设定
+4. 大纲要具体，包含关键情节点
+5. 围绕章节标题"${chapterInfo.title}"展开，确保内容与标题主题一致
+
+必须输出严格的JSON格式（不要markdown代码块）：
+{
+  "chapter_number": ${chapterInfo.chapter_number},
+  "title": "${chapterInfo.title}",
+  "outline": "200字以内的详细大纲内容",
+  "key_elements": {
+    "characters": ["本章主要角色"],
+    "items": ["本章涉及的物品"],
+    "locations": ["本章场景地点"]
+  }
+}`;
+  }
+
   // 生成章节目录（TOC）- 小批量直接生成，大批量自动分批
   async generateTOC(worldState, characters, summary, chapterCount, config, onProgress) {
     // ≤60章：一次生成
@@ -858,6 +952,102 @@ ${summary || '故事刚开始'}
 }
 
 现在开始为这部长篇小说设计${chapterCount}章的目录：`;
+  }
+
+  // ==================== 小说深度分析 ====================
+
+  buildDeepAnalysisPrompt(allChapters, worldState, characters) {
+    const characterNames = characters.map(c => `${c.name}(Lv.${c.level || '?'} ${c.realm || ''})`).join('、');
+    const genre = worldState?.genre || '未知';
+    const style = worldState?.style || '未知';
+    const background = worldState?.background || '未设定';
+    const rules = worldState?.rules || '未设定';
+
+    const chaptersText = allChapters.map(ch => {
+      const truncated = ch.content && ch.content.length > 2500
+        ? ch.content.substring(0, 2000) + '\n...\n' + ch.content.substring(ch.content.length - 500)
+        : (ch.content || '');
+      return `第${ch.chapter_number}章 ${ch.chapter_title || ''}\n${truncated}`;
+    }).join('\n\n---\n\n');
+
+    return `你是一位资深文学评论家，拥有20年以上的小说分析与评论经验。请对以下小说进行全面深度的写作风格和主题思想分析，写一篇专业、优美、有见地的文学评论文章。
+
+======================== 小说基本信息 ========================
+【类型】${genre}
+【风格】${style}
+【世界背景】${background}
+【核心规则】${rules}
+【主要角色】${characterNames || '暂无'}
+【总章节数】${allChapters.length}章
+
+======================== 小说全文内容 ========================
+${chaptersText}
+
+======================== 重要：输出要求 ========================
+请写一篇完整的文学评论文章。用流畅优美的中文自然段落来表达你的分析，就像《文学评论》杂志上的深度书评一样。
+
+*** 绝对不要输出JSON、代码块、markdown代码围栏 ***
+*** 绝对不要输出任何机器可读的结构化格式 ***
+
+你需要严格按照以下标题结构来组织文章（用 ## 表示大标题，### 表示小标题），每个小节写2-3个充实、有例证的自然段落：
+
+## 一、写作风格深度剖析 ##
+
+### 1. 叙事视角与手法 ###
+（分析小说的叙事视角选择、叙事技巧运用、叙事结构特点。引用具体章节为例，评价其有效性。）
+
+### 2. 语言风格与修辞 ###
+（分析用词特色、句式风格、修辞手法。指出语言的美感所在，评价作者的语言功力。）
+
+### 3. 节奏与张力控制 ###
+（分析叙事节奏的快慢变化、悬念设置与解开、张弛交替。评价阅读体验的起伏感。）
+
+### 4. 对话与描写比例 ###
+（分析对话与描写的配比关系，对话的自然度，描写的细腻程度，展示与告知的运用平衡。）
+
+### 5. 情感基调与氛围 ###
+（分析整体情感色彩、氛围营造手法、情感变化轨迹，以及这些对读者的感染力。）
+
+## 二、主题思想深度解读 ##
+
+### 6. 核心主题识别 ###
+（识别并深入分析小说的3-5个核心主题，如成长、复仇、爱情、自由、救赎、权力、命运等。每个主题用充实的一段文字展开，引用具体情节作为证据。）
+
+### 7. 母题与象征 ###
+（分析反复出现的母题和象征元素——特定意象、物品、场景、数字、颜色等。解读它们的象征层次和在叙事中的功能。）
+
+### 8. 思想深度与哲学内涵 ###
+（探讨作品触及的深层命题：存在主义、道德困境、自由意志、人性本质等。评价作者的思想视野和作品的哲学价值。）
+
+### 9. 价值观表达 ###
+（分析作品中体现的价值观念、价值冲突的处理方式，评价其深度与复杂性。）
+
+### 10. 社会与文化隐喻 ###
+（解读作品对社会现实的映射或隐喻，分析文化元素的运用，评价其文化表达的深度。）
+
+## 三、总结与创作建议 ##
+
+（用1-2个充实段落总结小说的艺术特色和思想价值，给出总体的文学评价，并提出建设性的创作建议。）
+
+【核心要求】
+- 这是一篇给作者看的、有温度的文学评论，语言专业但不晦涩，分析深入但不故作高深
+- 每个小节至少写2个完整自然段，确保有深度、有例证
+- 好就是好，不好就是不好——给出诚实的评价
+- 严格使用 ## 和 ### 作为标题标记，方便分节展示
+- 正文全部用自然段落，不要出现任何列表符号、编号、或代码格式
+
+现在开始你的深度分析：`;
+  }
+
+  async analyzeWritingStyleAndTheme(allChapters, worldState, characters, config, onChunk) {
+    const prompt = this.buildDeepAnalysisPrompt(allChapters, worldState, characters);
+    return await this.chatStream(
+      [{ role: 'user', content: prompt }],
+      0.5,
+      config,
+      onChunk,
+      8000
+    );
   }
 }
 
