@@ -89,6 +89,7 @@ Free-text Outline 自由大纲 → parse-outline → Structured Outline 结构�
                           ▼                      ▼                      ▼
                    chapter-outlines            toc              plot-suggestions
                     章节大纲生成             目录生成              情节建议
+                  (逐章勾选+SSE进度)          
                           │
                           ▼
                 generate / generate-stream (SSE)
@@ -119,6 +120,7 @@ App
 │   └─ Export (DOCX / PDF)
 ├─ BookShelf (公开书架)
 ├─ PublicRead (公开阅读)
+├─ DeepAnalysis (深度分析)
 └─ Admin Dashboard (管理后台 ~1800 LOC)
     ├─ User Management (用户管理)
     ├─ Review Queue (审核队列)
@@ -134,7 +136,7 @@ App
 | Capability 功能 | Endpoint | Description 说明 |
 |---|---|---|
 | Outline Parsing 大纲解析 | `parse-outline` | Convert free-text outline into structured chapter plans via function calling. 通过 Function Calling 将自由大纲转为结构化章节计划。 |
-| Chapter Outlining 章节大纲 | `chapter-outlines` | Generate detailed scene-by-scene chapter outlines. 生成包含场景分解的详细章节大纲。 |
+| Chapter Outlining 章节大纲 | `chapter-outlines` | Select chapters from existing TOC, then generate detailed outlines one-by-one with SSE progress streaming. 从已有目录中勾选章节，逐章生成详细大纲并 SSE 推送进度。 |
 | Table of Contents 目录生成 | `toc` | Produce hierarchical chapter structure with word-count estimates. 生成带字数预估的层级目录结构。 |
 | Plot Suggestions 情节建议 | `plot-suggestions` | Context-aware narrative branching suggestions. 基于上下文的叙事分支建议。 |
 | Content Generation 内容生成 | `generate` / `generate-stream` | Full chapter generation with SSE streaming. 流式/批量章节内容生成。 |
@@ -418,7 +420,7 @@ All endpoints prefixed with `/api`. Authenticated routes require `Authorization:
 | `POST` | `/novels/generate` | JWT/Guest | Generate content (batch) 批量生成 |
 | `POST` | `/novels/generate-stream` | JWT/Guest | Generate content (SSE) 流式生成 |
 | `POST` | `/novels/parse-outline` | JWT/Guest | Structure free-text outline 解析大纲 |
-| `POST` | `/novels/chapter-outlines` | JWT/Guest | Chapter-level outlines 章节大纲 |
+| `POST` | `/novels/chapter-outlines` | JWT/Guest | Chapter outlines (SSE stream when chapters array provided) 章节大纲（传入章节列表时SSE流式推送进度） |
 | `POST` | `/novels/toc` | JWT/Guest | Table of contents 目录生成 |
 | `POST` | `/novels/plot-suggestions` | JWT/Guest | Narrative branches 情节建议 |
 | `POST` | `/novels/:id/dialogue` | JWT/Guest | Character dialogue 角色对话 |
