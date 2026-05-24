@@ -11,7 +11,6 @@ export default defineConfig({
         changeOrigin: true,
         configure: (proxy, options) => {
           proxy.on('proxyReq', (proxyReq, req, res) => {
-            // 透传自定义 headers
             const userId = req.headers['user-id']
             const guestMode = req.headers['x-guest-mode']
             if (userId) proxyReq.setHeader('user-id', userId)
@@ -20,9 +19,19 @@ export default defineConfig({
         }
       }
     },
-    // 添加响应头，放宽 CSP 限制（仅开发环境）
     headers: {
       'Content-Security-Policy': "default-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: data: blob:;"
+    }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/element-plus')) return 'element-plus'
+          if (id.includes('node_modules/echarts')) return 'vendor-charts'
+          if (id.includes('node_modules/docx') || id.includes('node_modules/jspdf') || id.includes('node_modules/file-saver')) return 'vendor-docs'
+        }
+      }
     }
   }
 })

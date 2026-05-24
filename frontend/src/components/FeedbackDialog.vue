@@ -1,9 +1,16 @@
 <template>
   <div>
-    <!-- 悬浮反馈按钮 -->
-    <div class="feedback-float-btn" @click="showDialog = true">
+    <!-- 悬浮反馈按钮（可拖拽 + 闲时自动收起） -->
+    <div
+      class="feedback-float-btn"
+      :class="{ collapsed: isCollapsed, dragging: isDragging }"
+      :style="btnStyle"
+      @mousedown="onDragStart"
+      @click="onBtnClick"
+    >
       <el-icon><ChatDotRound /></el-icon>
-      <span>反馈</span>
+      <span v-if="!isCollapsed" class="btn-text">反馈</span>
+      <span v-if="isCollapsed" class="collapsed-hint">←</span>
     </div>
 
     <!-- 反馈弹窗 -->
@@ -23,9 +30,9 @@
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item 
-          v-if="form.type === 'content'" 
-          label="违规内容类型" 
+        <el-form-item
+          v-if="form.type === 'content'"
+          label="违规内容类型"
           prop="violationType"
         >
           <el-select v-model="form.violationType" placeholder="请选择违规类型" style="width: 100%">
@@ -51,8 +58,8 @@
         </el-form-item>
 
         <el-form-item label="联系邮箱（选填）" prop="email">
-          <el-input 
-            v-model="form.email" 
+          <el-input
+            v-model="form.email"
             placeholder="便于我们回复您，不填亦可"
           />
         </el-form-item>
@@ -81,9 +88,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onUnmounted } from 'vue'
 import { ChatDotRound, Warning } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import adminApi from '../api/admin'
 
 const showDialog = ref(false)
 const submitting = ref(false)
@@ -98,8 +106,8 @@ const form = reactive({
 
 const rules = {
   type: [{ required: true, message: '请选择反馈类型' }],
-  violationType: [{ 
-    required: true, 
+  violationType: [{
+    required: true,
     message: '请选择违规类型',
     trigger: 'change',
     validator: (rule, value, callback) => {
@@ -114,14 +122,108 @@ const rules = {
     { min: 10, message: '描述至少 10 个字符', trigger: 'blur' }
   ],
   email: [
-    { 
-      type: 'email', 
-      message: '请输入正确的邮箱格式', 
-      trigger: 'blur' 
+    {
+      type: 'email',
+      message: '请输入正确的邮箱格式',
+      trigger: 'blur'
     }
   ]
 }
 
+// ========== 拖拽逻辑 ==========
+const isDragging = ref(false)
+const isCollapsed = ref(false)
+const posX = ref(window.innerWidth - 100)
+const posY = ref(window.innerHeight - 200)
+let dragStartX = 0
+let dragStartY = 0
+let dragStartPosX = 0
+let dragStartPosY = 0
+let hasMoved = false
+
+const btnStyle = computed(() => ({
+  left: posX.value + 'px',
+  top: posY.value + 'px',
+  right: 'auto',
+  bottom: 'auto'
+}))
+
+const onDragStart = (e) => {
+  if (e.button !== 0) return // 只响应左键
+  hasMoved = false
+  dragStartX = e.clientX
+  dragStartY = e.clientY
+  dragStartPosX = posX.value
+  dragStartPosY = posY.value
+  isDragging.value = true
+
+  const onMove = (ev) => {
+    const dx = ev.clientX - dragStartX
+    const dy = ev.clientY - dragStartY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      hasMoved = true
+    }
+    // 限制在屏幕范围内
+    const btnWidth = isCollapsed.value ? 40 : 110
+    posX.value = Math.max(0, Math.min(window.innerWidth - btnWidth, dragStartPosX + dx))
+    posY.value = Math.max(0, Math.min(window.innerHeight - 40, dragStartPosY + dy))
+  }
+
+  const onUp = () => {
+    isDragging.value = false
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    resetIdleTimer()
+  }
+
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+// ========== 点击/展开逻辑 ==========
+const onBtnClick = () => {
+  if (hasMoved) return // 拖拽移动过，不触发点击
+  if (isCollapsed.value) {
+    // 收起状态 -> 展开
+    isCollapsed.value = false
+    // 调整位置确保完全可见
+    posX.value = Math.min(posX.value, window.innerWidth - 120)
+  } else {
+    showDialog.value = true
+  }
+  resetIdleTimer()
+}
+
+// ========== 闲时自动收起 ==========
+let idleTimer = null
+const IDLE_TIMEOUT = 10000 // 10秒
+
+const resetIdleTimer = () => {
+  clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => {
+    if (!showDialog.value) {
+      isCollapsed.value = true
+      // 收起到右侧边缘，只露出图标
+      posX.value = window.innerWidth - 40
+    }
+  }, IDLE_TIMEOUT)
+}
+
+// 页面有交互就重置计时
+const onPageInteraction = () => {
+  resetIdleTimer()
+}
+
+// 初始启动计时
+resetIdleTimer()
+document.addEventListener('click', onPageInteraction, { passive: true })
+
+onUnmounted(() => {
+  clearTimeout(idleTimer)
+  document.removeEventListener('click', onPageInteraction)
+})
+
+// ========== 表单逻辑 ==========
 const getPlaceholder = () => {
   switch (form.type) {
     case 'bug':
@@ -137,22 +239,29 @@ const getPlaceholder = () => {
 
 const submitFeedback = async () => {
   if (!formRef.value) return
-  
+
   await formRef.value.validate(async (valid) => {
     if (!valid) return
-    
+
     submitting.value = true
     try {
-      // 这里可以调用后端API提交反馈
-      // await feedbackApi.submit(form)
-      
-      // 模拟提交
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
+      const typeLabels = { bug: '功能故障', suggestion: '产品建议', content: '内容举报', other: '其他反馈' }
+      const reasonPrefix = form.violationType
+        ? `【${typeLabels[form.type] || form.type} - ${form.violationType}】`
+        : `【${typeLabels[form.type] || form.type}】`
+
+      await adminApi.createReport({
+        type: 'other',
+        reason: reasonPrefix + '\n' + form.content + (form.email ? `\n\n联系邮箱：${form.email}` : ''),
+        targetUserId: null,
+        novelId: null,
+        contentId: null,
+        reporterId: null
+      })
+
       ElMessage.success('感谢您的反馈，我们将尽快处理')
       showDialog.value = false
-      
-      // 重置表单
+
       form.content = ''
       form.violationType = ''
       form.email = ''
@@ -168,30 +277,61 @@ const submitFeedback = async () => {
 <style scoped>
 .feedback-float-btn {
   position: fixed;
-  right: 20px;
-  bottom: 100px;
-  background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+  background: var(--gradient-primary);
   color: white;
-  padding: 12px 16px;
-  border-radius: 24px;
-  cursor: pointer;
+  padding: 12px 18px;
+  border-radius: var(--radius-full);
+  cursor: grab;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 4px 12px rgba(230, 126, 34, 0.4);
-  transition: all 0.3s ease;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-lg), 0 4px 16px var(--primary-glow);
+  transition: box-shadow var(--transition-spring), padding 0.35s ease, border-radius 0.35s ease, transform 0.2s;
   z-index: 999;
+  user-select: none;
+  white-space: nowrap;
 }
 
 .feedback-float-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(230, 126, 34, 0.5);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-xl), 0 6px 24px var(--primary-glow);
+}
+
+.feedback-float-btn.dragging {
+  cursor: grabbing;
+  transform: scale(1.05);
+  box-shadow: var(--shadow-2xl), 0 8px 32px var(--primary-glow);
+  transition: none;
+}
+
+.feedback-float-btn.dragging:hover {
+  transform: scale(1.05);
+}
+
+/* 收起状态 */
+.feedback-float-btn.collapsed {
+  padding: 10px 12px;
+  border-radius: 24px 0 0 24px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.feedback-float-btn.collapsed:hover {
+  opacity: 1;
+  transform: translateX(-4px);
 }
 
 .feedback-float-btn .el-icon {
   font-size: 18px;
+  flex-shrink: 0;
+}
+
+.collapsed-hint {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-left: 2px;
 }
 
 :deep(.feedback-dialog) {
@@ -214,28 +354,13 @@ const submitFeedback = async () => {
   display: flex;
   gap: 12px;
   padding: 16px;
-  background: linear-gradient(135deg, rgba(230, 126, 34, 0.08) 0%, rgba(211, 84, 0, 0.04) 100%);
-  border-left: 3px solid #e67e22;
-  border-radius: 4px;
+  background: var(--gradient-primary-subtle);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
 }
-
-.notice-box .el-icon {
-  font-size: 20px;
-  color: #e67e22;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.notice-box p {
-  margin: 0;
-  font-size: 13px;
-  color: #5d4e37;
-  line-height: 1.6;
-}
-
-.notice-box p strong {
-  color: #8b4513;
-}
+.notice-box .el-icon { font-size: 20px; color: var(--primary); flex-shrink: 0; margin-top: 2px; }
+.notice-box p { margin: 0; font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; }
+.notice-box p strong { color: var(--primary-dark); }
 
 .dialog-footer {
   display: flex;
@@ -245,14 +370,16 @@ const submitFeedback = async () => {
 
 @media (max-width: 768px) {
   .feedback-float-btn {
-    right: 12px;
-    bottom: 80px;
     padding: 10px 14px;
     font-size: 13px;
   }
-  
-  .feedback-float-btn span {
+
+  .btn-text {
     display: none;
+  }
+
+  .feedback-float-btn.collapsed {
+    padding: 10px 12px;
   }
 }
 </style>

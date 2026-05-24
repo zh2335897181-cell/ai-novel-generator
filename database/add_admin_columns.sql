@@ -20,7 +20,8 @@ ADD COLUMN IF NOT EXISTS `status` ENUM('active', 'blocked', 'reviewing') DEFAULT
 -- 3️⃣ 为 story_content 表添加状态字段（用于章节审核）
 ALTER TABLE `story_content` 
 ADD COLUMN IF NOT EXISTS `status` ENUM('active', 'blocked', 'reviewing') DEFAULT 'active' COMMENT '内容状态',
-ADD COLUMN IF NOT EXISTS `chapter_number` INT COMMENT '章节编号';
+ADD COLUMN IF NOT EXISTS `chapter_number` INT COMMENT '章节编号',
+ADD COLUMN IF NOT EXISTS `review_status` ENUM('pending', 'approved', 'rejected') DEFAULT NULL COMMENT '章节审核状态';
 
 -- 4️⃣ 创建内容审核表
 CREATE TABLE IF NOT EXISTS `content_review` (

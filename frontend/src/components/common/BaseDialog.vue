@@ -1,15 +1,16 @@
-﻿<template>
+<template>
   <el-dialog
     v-model="visible"
     :title="title"
     :width="width"
     :before-close="handleClose"
     :close-on-click-modal="closeOnClickModal"
+    :class="['base-dialog', dialogClass]"
   >
     <slot />
     <template #footer v-if="!hideFooter">
       <slot name="footer">
-        <el-button @click="handleCancel">{{ cancelText }}</el-button>
+        <el-button @click="handleCancel" :disabled="loading">{{ cancelText }}</el-button>
         <el-button type="primary" @click="handleConfirm" :loading="loading">
           {{ confirmText }}
         </el-button>
@@ -22,38 +23,15 @@
 import { computed } from 'vue';
 
 const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    required: true
-  },
-  title: {
-    type: String,
-    default: '对话框'
-  },
-  width: {
-    type: String,
-    default: '500px'
-  },
-  loading: {
-    type: Boolean,
-    default: false
-  },
-  confirmText: {
-    type: String,
-    default: '确定'
-  },
-  cancelText: {
-    type: String,
-    default: '取消'
-  },
-  hideFooter: {
-    type: Boolean,
-    default: false
-  },
-  closeOnClickModal: {
-    type: Boolean,
-    default: true
-  }
+  modelValue: { type: Boolean, required: true },
+  title: { type: String, default: '对话框' },
+  width: { type: String, default: '520px' },
+  loading: { type: Boolean, default: false },
+  confirmText: { type: String, default: '确定' },
+  cancelText: { type: String, default: '取消' },
+  hideFooter: { type: Boolean, default: false },
+  closeOnClickModal: { type: Boolean, default: true },
+  dialogClass: { type: String, default: '' }
 });
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel', 'close']);
@@ -68,13 +46,10 @@ const handleClose = () => {
   emit('update:modelValue', false);
 };
 
-const handleConfirm = () => {
-  emit('confirm');
-};
+const handleConfirm = () => { emit('confirm'); };
 
 const handleCancel = () => {
   emit('cancel');
   emit('update:modelValue', false);
 };
 </script>
-

@@ -60,10 +60,8 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   const toggle = () => {
-    const modes = ['light', 'dark', 'auto']
-    const currentIndex = modes.indexOf(mode.value)
-    const nextMode = modes[(currentIndex + 1) % modes.length]
-    setMode(nextMode)
+    // 简单二元切换：亮色 ↔ 暗色
+    setMode(mode.value === 'dark' ? 'light' : 'dark')
   }
 
   const setLight = () => setMode('light')

@@ -338,13 +338,14 @@ const providers = [
       { label: '推荐', type: 'danger' }
     ],
     features: [
-      'DeepSeek-V4 模型支持超长上下文（128K+）',
-      'DeepSeek-V4-Pro 强推理模式适合复杂剧情设计',
-      'DeepSeek-V4-Flash 快速模式性价比高',
+      'DeepSeek-V4 全系支持 1M（百万Token）超长上下文',
+      'V4-Pro：1.6T总参/49B激活，强推理模式适合复杂剧情设计',
+      'V4-Flash：284B总参/13B激活，极速响应性价比之选',
+      '支持 Thinking/Thinking Max 多级推理模式',
       '支持 Function Calling 用于结构化数据提取',
-      '价格相对OpenAI便宜 90%以上'
+      '价格约为 OpenAI 的 1/10，性价比极高'
     ],
-    pricing: 'Flash: ¥1/百万tokens输入, ¥4/百万tokens输出; Pro: ¥2/百万tokens输入, ¥8/百万tokens输出',
+    pricing: 'Flash: $0.14/1M tokens输入, $0.28/1M tokens输出; Pro: $0.435/1M tokens输入, $0.87/1M tokens输出',
     privacy: '数据存储在中国大陆境内，符合国内数据安全法规',
     urls: {
       api: 'https://platform.deepseek.com/api_keys',
@@ -352,8 +353,8 @@ const providers = [
       docs: 'https://api-docs.deepseek.com/'
     },
     models: [
-      { value: 'deepseek-v4-flash', label: 'DeepSeek-V4-Flash', group: 'V4系列', tag: '推荐', tagType: 'success' },
-      { value: 'deepseek-v4-pro', label: 'DeepSeek-V4-Pro', group: 'V4系列', tag: '强推理', tagType: 'warning' }
+      { value: 'deepseek-v4-flash', label: 'DeepSeek-V4-Flash (1M上下文)', group: 'V4系列', tag: '推荐', tagType: 'success' },
+      { value: 'deepseek-v4-pro', label: 'DeepSeek-V4-Pro (1M上下文)', group: 'V4系列', tag: '强推理', tagType: 'warning' }
     ]
   },
   {
@@ -605,10 +606,12 @@ watch(() => selectedProvider.value, (newVal) => {
 }
 
 .page-header {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 20px 40px;
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--blur-xl)) saturate(2);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(2);
+  border-bottom: 1px solid var(--border-glass);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  padding: 18px 40px;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -635,16 +638,18 @@ watch(() => selectedProvider.value, (newVal) => {
 .title-section h1 {
   margin: 0 0 4px 0;
   font-size: 24px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #fb7185 0%, #38bdf8 100%);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .subtitle {
   margin: 0;
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .header-actions {
@@ -675,10 +680,16 @@ watch(() => selectedProvider.value, (newVal) => {
 }
 
 .config-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-card);
+  transition: all var(--transition-base);
+}
+.config-card:hover {
+  box-shadow: var(--shadow-card-hover);
 }
 
 .config-card :deep(.el-card__header) {
@@ -692,7 +703,7 @@ watch(() => selectedProvider.value, (newVal) => {
   gap: 10px;
   font-weight: 600;
   font-size: 16px;
-  color: #1f2933;
+  color: var(--text-primary);
 }
 
 .provider-grid {
@@ -706,45 +717,60 @@ watch(() => selectedProvider.value, (newVal) => {
   display: flex;
   gap: 16px;
   padding: 20px;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 12px;
+  background: var(--bg-glass);
+  border-radius: var(--radius-lg);
   border: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all var(--transition-spring);
+  position: relative;
 }
-
 .provider-card:hover {
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px);
 }
-
 .provider-card.active {
-  border-color: #fb7185;
-  background: rgba(251, 113, 133, 0.1);
+  border-color: var(--primary-400);
+  background: var(--gradient-primary-subtle);
+  box-shadow: var(--shadow-md);
+}
+.provider-card.active::before {
+  content: '';
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--gradient-success);
+  box-shadow: 0 0 8px rgba(16,185,129,0.4);
 }
 
 .provider-icon {
   width: 56px;
   height: 56px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   flex-shrink: 0;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+  transition: all var(--transition-spring);
+}
+.provider-card:hover .provider-icon {
+  transform: scale(1.08) rotate(-3deg);
 }
 
 .provider-info h3 {
   margin: 0 0 6px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #1f2933;
+  color: var(--text-primary);
 }
 
 .provider-info p {
   margin: 0 0 10px 0;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
@@ -776,7 +802,7 @@ watch(() => selectedProvider.value, (newVal) => {
 .input-hint {
   margin-top: 8px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -830,13 +856,13 @@ watch(() => selectedProvider.value, (newVal) => {
   margin: 0 0 12px 0;
   font-size: 15px;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 .detail-section ul {
   margin: 0;
   padding-left: 20px;
-  color: #4b5563;
+  color: var(--text-regular, #4b5563);
 }
 
 .detail-section li {
@@ -846,15 +872,17 @@ watch(() => selectedProvider.value, (newVal) => {
 
 .detail-section p {
   margin: 0 0 12px 0;
-  color: #4b5563;
+  color: var(--text-regular, #4b5563);
   line-height: 1.6;
 }
 
 .status-card, .tips-card, .comparison-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-card);
 }
 
 .status-content {
@@ -874,7 +902,7 @@ watch(() => selectedProvider.value, (newVal) => {
 
 .status-label {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .test-result {
@@ -900,7 +928,7 @@ watch(() => selectedProvider.value, (newVal) => {
   gap: 10px;
   margin-bottom: 12px;
   font-size: 13px;
-  color: #4b5563;
+  color: var(--text-regular, #4b5563);
   line-height: 1.5;
 }
 

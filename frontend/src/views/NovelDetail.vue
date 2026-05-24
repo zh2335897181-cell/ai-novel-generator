@@ -993,28 +993,68 @@
       </template>
     </el-dialog>
 
-    <!-- 生成章节大纲对话框（新增） -->
-    <el-dialog v-model="showChapterDialog" title="AI生成章节大纲" width="500px">
-      <el-alert
-        title="功能说明"
-        type="info"
-        :closable="false"
-        style="margin-bottom: 20px;"
-      >
-        AI会根据当前世界观和剧情，自动生成接下来的章节大纲
-      </el-alert>
+    <!-- 生成章节大纲对话框 -->
+    <el-dialog v-model="showChapterDialog" title="AI生成章节大纲" width="600px" @open="initChapterSelection">
+      <!-- 无章节目录时提示先使用AI生成目录 -->
+      <div v-if="chapterOutlines.length === 0" style="text-align:center;padding:20px 0;">
+        <el-empty description="暂无章节目录，请先使用「AI生成目录」创建章节目录" :image-size="80" />
+      </div>
 
-      <el-form :model="chapterForm" label-width="100px">
-        <el-form-item label="生成章节数">
-          <el-input-number v-model="chapterForm.chapterCount" :min="1" :max="20" />
-        </el-form-item>
-      </el-form>
+      <!-- 有目录时显示勾选列表 -->
+      <div v-else>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <el-alert
+            title="请勾选需要生成大纲的章节"
+            type="success"
+            :closable="false"
+            style="flex:1;margin-bottom:0;"
+          />
+          <el-button text size="small" @click="toggleAllChapters">
+            {{ selectAll ? '取消全选' : '全选' }}
+          </el-button>
+        </div>
+        <div class="chapter-checkbox-list">
+          <el-checkbox
+            v-for="chapter in chapterSelections"
+            :key="chapter.id"
+            v-model="chapter.selected"
+            size="large"
+            :disabled="generatingChapters"
+            style="display:block;margin-bottom:8px;"
+          >
+            <span>第{{ chapter.chapter_number }}章 {{ chapter.title }}</span>
+            <el-tag v-if="chapter.outline" size="small" type="warning" style="margin-left:8px;">已有大纲</el-tag>
+          </el-checkbox>
+        </div>
+
+        <!-- 逐章生成进度条 -->
+        <div v-if="generatingChapters && outlineProgress" style="margin-top:16px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="font-size:13px;color:var(--text-secondary);">
+              正在生成：第{{ outlineProgress.chapter_number }}章《{{ outlineProgress.title }}》
+            </span>
+            <span style="font-size:13px;color:var(--text-secondary);">
+              {{ outlineProgress.current }}/{{ outlineProgress.total }}
+            </span>
+          </div>
+          <el-progress
+            :percentage="Math.round((outlineProgress.current / outlineProgress.total) * 100)"
+            :text-inside="true"
+            :stroke-width="20"
+          />
+        </div>
+      </div>
 
       <template #footer>
-        <el-button @click="showChapterDialog = false">取消</el-button>
-        <el-button type="primary" @click="generateChapters" :loading="generatingChapters">
+        <el-button @click="showChapterDialog = false" :disabled="generatingChapters">取消</el-button>
+        <el-button
+          v-if="chapterOutlines.length > 0 && !generatingChapters"
+          type="primary"
+          @click="generateChapters"
+          :disabled="selectedChapterCount === 0"
+        >
           <el-icon><MagicStick /></el-icon>
-          开始生成
+          生成大纲（{{ selectedChapterCount }}章）
         </el-button>
       </template>
     </el-dialog>
@@ -1459,6 +1499,10 @@ const parsing = ref(false)
 const generatingChapters = ref(false)
 const generatingTOC = ref(false)
 const tocProgress = ref(null)
+const chapterSelections = ref([])
+const outlineProgress = ref(null)
+const selectedChapterCount = computed(() => chapterSelections.value.filter(c => c.selected).length)
+const selectAll = computed(() => chapterSelections.value.length > 0 && chapterSelections.value.every(c => c.selected))
 
 // AI剧情建议相关
 const gettingSuggestion = ref(false)
@@ -2212,28 +2256,72 @@ const parseOutline = async () => {
   }
 }
 
-// 生成章节大纲（新功能）
+// 打开对话框时，用现有章节目录初始化勾选列表
+const initChapterSelection = () => {
+  chapterSelections.value = chapterOutlines.value.map(c => ({
+    id: c.id,
+    chapter_number: c.chapter_number,
+    title: c.title,
+    outline: c.outline || '',
+    selected: true
+  }))
+}
+
+// 为勾选的章节生成大纲（逐章生成，带进度条）
 const generateChapters = async () => {
   if (!aiConfigStore.isConfigured()) {
     ElMessage.warning('请先配置AI')
     return
   }
-  
+
+  const selected = chapterSelections.value.filter(c => c.selected)
+  if (selected.length === 0) {
+    ElMessage.warning('请至少选择一个章节')
+    return
+  }
+
   generatingChapters.value = true
+  outlineProgress.value = null
+  let errorCount = 0
+
   try {
     const aiConfig = aiConfigStore.getConfig()
-    const res = await api.generateChapterOutlines(novelId.value, chapterForm.value.chapterCount, aiConfig)
-    
-    ElMessage.success(`成功生成${chapterForm.value.chapterCount}章大纲`)
-    showChapterDialog.value = false
-    
-    // 刷新章节大纲
-    loadChapterOutlines()
+    const chapters = selected.map(c => ({
+      id: c.id,
+      chapter_number: c.chapter_number,
+      title: c.title
+    }))
+
+    await api.generateChapterOutlinesStream(novelId.value, chapters, aiConfig, (data) => {
+      if (data.type === 'progress') {
+        outlineProgress.value = data
+      } else if (data.type === 'chapter_error') {
+        errorCount++
+        outlineProgress.value = data
+      } else if (data.type === 'done') {
+        const successCount = data.total - errorCount
+        if (errorCount > 0) {
+          ElMessage.warning(`大纲生成完成：成功${successCount}章，失败${errorCount}章`)
+        } else {
+          ElMessage.success(`成功生成${successCount}章大纲`)
+        }
+        showChapterDialog.value = false
+        loadChapterOutlines()
+      } else if (data.type === 'error') {
+        ElMessage.error('生成失败：' + data.message)
+      }
+    })
   } catch (error) {
-    ElMessage.error('生成失败：' + (error.response?.data?.message || error.message))
+    ElMessage.error('生成失败：' + (error.message || '未知错误'))
   } finally {
     generatingChapters.value = false
+    outlineProgress.value = null
   }
+}
+
+const toggleAllChapters = () => {
+  const value = !selectAll.value
+  chapterSelections.value.forEach(c => { c.selected = value })
 }
 
 // 自动生成章节目录（TOC）
@@ -6069,6 +6157,12 @@ body.immersive-reading .story-list {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 55%;
+}
+
+.chapter-checkbox-list {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px 0;
 }
 
 </style>

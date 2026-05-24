@@ -179,6 +179,12 @@ class NovelService {
 
   // 发布/取消发布
   async publishNovel(novelId, userId) {
+    // 检查小说状态，审核中不允许发布
+    const [[novel]] = await pool.query('SELECT status FROM novel WHERE id = ?', [novelId]);
+    if (!novel) throw new Error('小说不存在');
+    if (novel.status === 'reviewing') throw new Error('小说审核中，暂不能发布');
+    if (novel.status === 'blocked') throw new Error('小说已被封禁，不能发布');
+
     await pool.query(
       'UPDATE novel SET is_published = 1, published_at = NOW() WHERE id = ? AND user_id = ?',
       [novelId, userId]
@@ -219,7 +225,7 @@ class NovelService {
     );
     if (!novel) return null;
     const [chapters] = await pool.query(
-      'SELECT id, chapter_number, chapter_title, content, word_count, created_at FROM story_content WHERE novel_id = ? ORDER BY chapter_number ASC',
+      "SELECT id, chapter_number, chapter_title, content, word_count, created_at FROM story_content WHERE novel_id = ? AND (content_type IS NULL OR content_type != 'dialogue') ORDER BY chapter_number ASC",
       [novelId]
     );
     return { novel, chapters };
@@ -292,7 +298,7 @@ class NovelService {
     const [locations] = await pool.query('SELECT * FROM location_state WHERE novel_id = ? ORDER BY id', [novelId]);
     const [summary] = await pool.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
     const [contents] = await pool.query(
-      'SELECT * FROM story_content WHERE novel_id = ? ORDER BY created_at DESC LIMIT 10',
+      'SELECT * FROM story_content WHERE novel_id = ? ORDER BY chapter_number ASC',
       [novelId]
     );
 
@@ -355,10 +361,13 @@ class NovelService {
         aiConfig
       );
 
-      // 3. 保存生成的内容
+      // 3. 敏感词过滤
+      const filtered = await sensitiveWordService.filterAsync(storyContent);
+
+      // 4. 保存生成的内容
       const [contentResult] = await conn.query(
         'INSERT INTO story_content (novel_id, content) VALUES (?, ?)',
-        [novelId, storyContent]
+        [novelId, filtered]
       );
 
       // 自动提交到内容审核队列
@@ -528,8 +537,8 @@ class NovelService {
     }
   }
 
-  // 生成章节大纲（新功能）
-  async generateChapterOutlines(novelId, chapterCount, aiConfig) {
+  // 生成章节大纲
+  async generateChapterOutlines(novelId, chapterCount, aiConfig, specificChapters = null) {
     const conn = await pool.getConnection();
     try {
       // 1. 查询当前状态（包含物品和地点）
@@ -539,33 +548,62 @@ class NovelService {
       const [locations] = await conn.query('SELECT * FROM location_state WHERE novel_id = ?', [novelId]);
       const [summary] = await conn.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
 
-      // 2. 调用AI生成章节大纲（传入物品和地点）
-      const result = await aiClient.generateChapterOutlines(
-        worldState[0],
-        characters,
-        summary[0]?.summary,
-        chapterCount,
-        items,
-        locations,
-        aiConfig
-      );
+      // 2. 调用AI生成章节大纲
+      let result;
+      if (specificChapters && specificChapters.length > 0) {
+        // 为指定的章节生成大纲
+        result = await aiClient.generateSpecificChapterOutlines(
+          worldState[0],
+          characters,
+          summary[0]?.summary,
+          specificChapters,
+          items,
+          locations,
+          aiConfig
+        );
+      } else {
+        result = await aiClient.generateChapterOutlines(
+          worldState[0],
+          characters,
+          summary[0]?.summary,
+          chapterCount,
+          items,
+          locations,
+          aiConfig
+        );
+      }
 
       // 3. 保存章节大纲
       await conn.beginTransaction();
-      
-      // 获取当前最大章节号
-      const [maxChapter] = await conn.query(
-        'SELECT COALESCE(MAX(chapter_number), 0) as max_num FROM chapter_outline WHERE novel_id = ?',
-        [novelId]
-      );
-      const startNumber = maxChapter[0].max_num + 1;
 
-      for (let i = 0; i < result.chapters.length; i++) {
-        const chapter = result.chapters[i];
-        await conn.query(
-          'INSERT INTO chapter_outline (novel_id, chapter_number, title, outline, status) VALUES (?, ?, ?, ?, ?)',
-          [novelId, startNumber + i, chapter.title, chapter.outline, '未开始']
+      if (specificChapters && specificChapters.length > 0) {
+        // 更新指定章节的大纲（按数据库ID匹配）
+        for (const chapter of result.chapters) {
+          const matched = specificChapters.find(
+            c => c.chapter_number === chapter.chapter_number
+          );
+          if (matched) {
+            await conn.query(
+              'UPDATE chapter_outline SET outline = ?, status = ? WHERE id = ? AND novel_id = ?',
+              [chapter.outline, '未开始', matched.id, novelId]
+            );
+          }
+        }
+      } else {
+        // 获取当前最大章节号，追加
+        const [maxChapter] = await conn.query(
+          'SELECT COALESCE(MAX(chapter_number), 0) as max_num FROM chapter_outline WHERE novel_id = ?',
+          [novelId]
         );
+        const startNumber = maxChapter[0].max_num + 1;
+
+        for (let i = 0; i < result.chapters.length; i++) {
+          const chapter = result.chapters[i];
+          await conn.query(
+            'INSERT INTO chapter_outline (novel_id, chapter_number, title, outline, status) VALUES (?, ?, ?, ?, ?)',
+            [novelId, startNumber + i, chapter.title, chapter.outline, '未开始']
+          );
+        }
       }
 
       await conn.commit();
@@ -575,6 +613,68 @@ class NovelService {
       await conn.rollback();
       console.error('章节大纲生成失败:', error);
       throw error;
+    } finally {
+      conn.release();
+    }
+  }
+
+  // 逐章生成大纲（带进度回调，用于SSE流式推送）
+  async generateChapterOutlinesWithProgress(novelId, specificChapters, aiConfig, onProgress) {
+    const conn = await pool.getConnection();
+    try {
+      const [worldState] = await conn.query('SELECT * FROM world_state WHERE novel_id = ?', [novelId]);
+      const [characters] = await conn.query('SELECT * FROM character_state WHERE novel_id = ?', [novelId]);
+      const [items] = await conn.query('SELECT * FROM item_state WHERE novel_id = ?', [novelId]);
+      const [locations] = await conn.query('SELECT * FROM location_state WHERE novel_id = ?', [novelId]);
+      const [summary] = await conn.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
+
+      const total = specificChapters.length;
+      const results = [];
+
+      for (let i = 0; i < total; i++) {
+        const chapter = specificChapters[i];
+        onProgress({
+          type: 'progress',
+          current: i + 1,
+          total,
+          chapter_number: chapter.chapter_number,
+          title: chapter.title
+        });
+
+        try {
+          const result = await aiClient.generateSingleChapterOutline(
+            worldState[0],
+            characters,
+            summary[0]?.summary,
+            { chapter_number: chapter.chapter_number, title: chapter.title },
+            items,
+            locations,
+            aiConfig
+          );
+
+          // 更新数据库
+          await conn.query(
+            'UPDATE chapter_outline SET outline = ?, status = ? WHERE id = ? AND novel_id = ?',
+            [result.outline, '未开始', chapter.id, novelId]
+          );
+
+          results.push({ id: chapter.id, ...result });
+        } catch (e) {
+          console.error(`第${chapter.chapter_number}章大纲生成失败:`, e);
+          onProgress({
+            type: 'chapter_error',
+            current: i + 1,
+            total,
+            chapter_number: chapter.chapter_number,
+            title: chapter.title,
+            message: e.message
+          });
+        }
+      }
+
+      onProgress({ type: 'done', total, results });
+
+      return { chapters: results, total };
     } finally {
       conn.release();
     }
@@ -1467,7 +1567,7 @@ ${recentStory || '故事刚开始'}
     const conn = await pool.getConnection();
     try {
       const [[chapter]] = await conn.query(
-        'SELECT id FROM story_content WHERE id = ? AND novel_id = ?',
+        'SELECT id, chapter_number FROM story_content WHERE id = ? AND novel_id = ?',
         [chapterId, novelId]
       );
       if (!chapter) {
@@ -1483,6 +1583,16 @@ ${recentStory || '故事刚开始'}
       await conn.query(
         'DELETE FROM rag_chunk WHERE source_id = ? AND source_type = ?',
         [chapterId, 'story']
+      );
+
+      // 清理关联的审核记录和时间线事件
+      await conn.query(
+        'DELETE FROM content_review WHERE content_id = ? AND content_type = ?',
+        [chapterId, 'chapter']
+      );
+      await conn.query(
+        'DELETE FROM timeline_events WHERE related_chapter = ?',
+        [chapter.chapter_number]
       );
     } catch (error) {
       throw error;

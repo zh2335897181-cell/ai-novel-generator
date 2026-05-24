@@ -1,6 +1,12 @@
 import mysql from 'mysql2/promise';
+import 'dotenv/config';
 
-const pool = mysql.createPool({ host: 'localhost', user: 'root', password: 'zh2335897', database: 'ai_novel_db' });
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'ai_novel_db'
+});
 
 // Create invite_codes table
 try {

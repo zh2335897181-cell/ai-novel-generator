@@ -68,13 +68,14 @@ const handleClick = (item) => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
-  background: var(--bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border);
+  height: 64px;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(var(--blur-xl)) saturate(1.8);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(1.8);
+  border-top: 1px solid var(--border-glass);
+  box-shadow: 0 -2px 20px rgba(0,0,0,0.04);
   z-index: var(--z-sticky);
-  padding-bottom: env(safe-area-inset-bottom); /* iPhone 安全区 */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .nav-items {
@@ -84,6 +85,7 @@ const handleClick = (item) => {
   height: 100%;
   max-width: 500px;
   margin: 0 auto;
+  padding: 0 8px;
 }
 
 .nav-item {
@@ -91,30 +93,34 @@ const handleClick = (item) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 6px 16px;
+  gap: 3px;
+  padding: 6px 14px;
   cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.3s ease;
-  border-radius: 12px;
+  color: var(--text-muted);
+  transition: all var(--transition-spring);
+  border-radius: var(--radius-md);
+  position: relative;
 }
 
-.nav-item:active {
-  transform: scale(0.95);
-}
+.nav-item:active { transform: scale(0.9); }
 
 .nav-item.active {
   color: var(--primary);
+  background: var(--gradient-primary-subtle);
 }
 
-.nav-item.active .el-icon {
-  filter: drop-shadow(0 0 8px var(--primary-glow));
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 20%;
+  right: 20%;
+  height: 3px;
+  background: var(--gradient-primary);
+  border-radius: 0 0 3px 3px;
 }
 
-.nav-label {
-  font-size: 11px;
-  font-weight: 500;
-}
+.nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
 
 .nav-badge :deep(.el-badge__content) {
   transform: translate(30%, -30%) scale(0.8);

@@ -176,15 +176,52 @@ export default {
     return data
   },
 
-  async generateChapterOutlines(novelId, chapterCount, aiConfig) {
+  async generateChapterOutlines(novelId, chapterCount, aiConfig, chapters = null) {
     const response = await authFetch(`${BASE}/novels/chapter-outlines`, {
       method: 'POST',
       headers: getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ novelId, chapterCount, aiConfig })
+      body: JSON.stringify({ novelId, chapterCount, aiConfig, chapters })
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.message)
     return data
+  },
+
+  // 流式生成章节大纲（逐章生成，推送进度）
+  async generateChapterOutlinesStream(novelId, chapters, aiConfig, onProgress) {
+    const response = await authFetch(`${BASE}/novels/chapter-outlines`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ novelId, chapterCount: chapters.length, chapters, aiConfig })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '请求失败' }))
+      throw new Error(err.message)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.substring(6))
+          onProgress(data)
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+    }
   },
 
   async getChapterOutlines(novelId) {

@@ -59,10 +59,10 @@
               <li><strong>DeepSeek（推荐）</strong>：
                 <ul style="margin-top: 8px; margin-bottom: 8px;">
                   <li>国产模型，中文创作能力强</li>
-                  <li>DeepSeek-V3：性价比高，适合日常创作</li>
-                  <li>DeepSeek-R1：推理模型，适合复杂剧情</li>
-                  <li>支持128K超长上下文</li>
-                  <li>价格：约 ¥8/百万tokens</li>
+                  <li>DeepSeek-V4-Flash：极速响应，性价比之选</li>
+                  <li>DeepSeek-V4-Pro：强推理模式，适合复杂剧情</li>
+                  <li>全系支持 1M（百万Token）超长上下文</li>
+                  <li>价格：Flash $0.14/1M输入, Pro $0.435/1M输入</li>
                 </ul>
               </li>
               <li><strong>OpenAI GPT系列</strong>：

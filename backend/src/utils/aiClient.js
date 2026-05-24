@@ -154,41 +154,29 @@ class AIClient {
   // 拆解小说大纲（新功能）
   async parseNovelOutline(outline, config) {
     const prompt = this.buildOutlineParsePrompt(outline);
-    const result = await this.chat([{ role: 'user', content: prompt }], 0.5, config);
-    
-    try {
-      let cleanResult = result.trim();
-      if (cleanResult.startsWith('```json')) {
-        cleanResult = cleanResult.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (cleanResult.startsWith('```')) {
-        cleanResult = cleanResult.replace(/```\n?/g, '');
-      }
-      
-      return JSON.parse(cleanResult);
-    } catch (error) {
-      console.error('大纲解析失败，原始内容:', result);
-      throw new Error('AI解析失败，请重试');
-    }
+    const result = await this.chat([{ role: 'user', content: prompt }], 0.5, config, 8000);
+    return this.parseJSON(result, '大纲拆解');
   }
 
   // 生成章节大纲（新功能）
   async generateChapterOutlines(worldState, characters, summary, chapterCount, items, locations, config) {
     const prompt = this.buildChapterOutlinePrompt(worldState, characters, summary, chapterCount, items, locations);
-    const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config);
-    
-    try {
-      let cleanResult = result.trim();
-      if (cleanResult.startsWith('```json')) {
-        cleanResult = cleanResult.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (cleanResult.startsWith('```')) {
-        cleanResult = cleanResult.replace(/```\n?/g, '');
-      }
-      
-      return JSON.parse(cleanResult);
-    } catch (error) {
-      console.error('章节大纲生成失败，原始内容:', result);
-      throw new Error('AI生成失败，请重试');
-    }
+    const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 8000);
+    return this.parseJSON(result, '章节大纲');
+  }
+
+  // 为指定章节生成大纲（批量，一次AI调用）
+  async generateSpecificChapterOutlines(worldState, characters, summary, chapters, items, locations, config) {
+    const prompt = this.buildSpecificChaptersOutlinePrompt(worldState, characters, summary, chapters, items, locations);
+    const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 8000);
+    return this.parseJSON(result, '章节大纲');
+  }
+
+  // 为单个章节生成大纲（逐章调用，用于进度展示）
+  async generateSingleChapterOutline(worldState, characters, summary, chapterInfo, items, locations, config) {
+    const prompt = this.buildSingleChapterOutlinePromptSimple(worldState, characters, summary, chapterInfo, items, locations);
+    const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 4096);
+    return this.parseJSON(result, '单章大纲');
   }
 
   // 构建小说生成Prompt
@@ -268,6 +256,7 @@ ${chapterInfo}
 5. **节奏变化**：紧张时用短句，舒缓时用长句描写，张弛有度
 6. **细节的力量**：用具体的细节打动人心——一个颤抖的手指、一阵沉默、一道意味深长的目光
 7. **留白与含蓄**：不要把所有情感都直白说出，让读者自己去体会
+
 
 ## 【绝对禁止 - 违反将导致严重后果】 ##
 🚫 死亡角色绝对不能出现、不能复活、不能以任何形式提及
@@ -632,23 +621,149 @@ ${summary || '故事刚开始'}
 现在开始生成章节大纲：`;
   }
 
+  // 为指定章节构建大纲Prompt（用户已选好标题）
+  buildSpecificChaptersOutlinePrompt(worldState, characters, summary, chapters, items = [], locations = []) {
+    const characterList = characters.map(c => {
+      const realmOrLevel = c.realm || `Lv.${c.level}`;
+      return `【${c.name}】${realmOrLevel} | 状态:${c.status}`;
+    }).join('\n');
+
+    const aliveCharacters = characters.filter(c => c.status !== '死亡').map(c => c.name).join('、');
+    const deadCharacters = characters.filter(c => c.status === '死亡').map(c => c.name).join('、');
+
+    const itemList = items.length > 0
+      ? items.map(i => `【${i.name}】类型:${i.type || '未知'} | 持有者:${i.owner || '无'} | 状态:${i.status}`).join('\n')
+      : '暂无';
+
+    const locationList = locations.length > 0
+      ? locations.map(l => `【${l.name}】类型:${l.type || '未知'} | 状态:${l.status} | 描述:${l.description || '无'}`).join('\n')
+      : '暂无';
+
+    const chapterList = chapters.map(c => `第${c.chapter_number}章《${c.title}》`).join('\n');
+
+    return `你是一个专业的小说大纲规划AI。请为以下指定的章节逐一生成详细大纲。
+
+======================== 世界设定（来自world_state表）========================
+【类型】${worldState?.genre || '未知'}
+【风格】${worldState?.style || '未知'}
+【规则】${worldState?.rules || '无'}
+【背景】${worldState?.background || '无'}
+
+======================== 角色状态（来自character_state表）========================
+${characterList}
+
+⚠️ 存活角色：${aliveCharacters || '无'}
+⚠️ 已死亡角色：${deadCharacters || '无'}
+
+======================== 物品状态（来自item_state表）========================
+${itemList}
+
+======================== 地点状态（来自location_state表）========================
+${locationList}
+
+======================== 当前剧情摘要（来自story_summary表）========================
+${summary || '故事刚开始'}
+
+======================== 需要生成大纲的章节 ========================
+${chapterList}
+
+======================== 输出要求 ========================
+必须输出严格的JSON格式（不要markdown代码块）：
+{
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "title": "章节标题（与输入保持一致）",
+      "outline": "200字以内的章节大纲，必须包含：主要角色、核心事件、涉及的物品/地点、预期结果",
+      "key_elements": {
+        "characters": ["本章主要角色"],
+        "items": ["本章涉及的物品"],
+        "locations": ["本章场景地点"]
+      }
+    }
+  ]
+}
+
+⚠️ 注意事项：
+1. 严格按上述章节列表生成，章节号和标题与输入保持一致
+2. 章节之间要有连贯性和递进关系
+3. 符合小说类型和风格
+4. 每章大纲要具体，包含关键情节点
+5. 合理分配角色、物品、地点到不同章节
+6. 考虑剧情节奏和张弛有度
+7. 确保JSON格式正确
+
+现在开始生成章节大纲：`;
+  }
+
+  // 为单个章节构建简化Prompt（无前后章上下文，用于逐章生成+进度展示）
+  buildSingleChapterOutlinePromptSimple(worldState, characters, summary, chapterInfo, items = [], locations = []) {
+    const characterList = characters.map(c => {
+      const realmOrLevel = c.realm || `Lv.${c.level}`;
+      return `【${c.name}】${realmOrLevel} | 状态:${c.status}`;
+    }).join('\n');
+
+    const aliveCharacters = characters.filter(c => c.status !== '死亡').map(c => c.name).join('、');
+    const deadCharacters = characters.filter(c => c.status === '死亡').map(c => c.name).join('、');
+
+    const itemList = items.length > 0
+      ? items.map(i => `【${i.name}】类型:${i.type || '未知'} | 持有者:${i.owner || '无'} | 状态:${i.status}`).join('\n')
+      : '暂无';
+
+    const locationList = locations.length > 0
+      ? locations.map(l => `【${l.name}】类型:${l.type || '未知'} | 状态:${l.status} | 描述:${l.description || '无'}`).join('\n')
+      : '暂无';
+
+    return `你是一个专业的小说大纲规划AI。请为第${chapterInfo.chapter_number}章《${chapterInfo.title}》生成详细大纲。
+
+======================== 世界设定 ========================
+【类型】${worldState?.genre || '未知'}
+【风格】${worldState?.style || '未知'}
+【规则】${worldState?.rules || '无'}
+【背景】${worldState?.background || '无'}
+
+======================== 角色状态 ========================
+${characterList}
+
+存活角色：${aliveCharacters || '无'}
+已死亡角色：${deadCharacters || '无'}
+
+======================== 物品状态 ========================
+${itemList}
+
+======================== 地点状态 ========================
+${locationList}
+
+======================== 当前剧情摘要 ========================
+${summary || '故事刚开始'}
+
+======================== 输出要求 ========================
+请为第${chapterInfo.chapter_number}章《${chapterInfo.title}》生成一个200字以内的详细大纲。
+
+大纲要求：
+1. 围绕章节标题"${chapterInfo.title}"展开，确保内容与标题主题一致
+2. 包含本章的主要角色、核心事件、涉及的地点
+3. 符合小说的类型和风格设定
+4. 大纲要具体，包含关键情节点
+
+必须输出严格的JSON格式（不要markdown代码块）：
+{
+  "chapter_number": ${chapterInfo.chapter_number},
+  "title": "${chapterInfo.title}",
+  "outline": "200字以内的详细大纲内容",
+  "key_elements": {
+    "characters": ["本章主要角色"],
+    "items": ["本章涉及的物品"],
+    "locations": ["本章场景地点"]
+  }
+}`;
+  }
+
   // 重新生成单个章节的大纲
   async regenerateSingleChapterOutline(worldState, characters, summary, chapterInfo, items, locations, config) {
     const prompt = this.buildSingleChapterOutlinePrompt(worldState, characters, summary, chapterInfo, items, locations);
     const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 4096);
-
-    try {
-      let cleanResult = result.trim();
-      if (cleanResult.startsWith('```json')) {
-        cleanResult = cleanResult.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (cleanResult.startsWith('```')) {
-        cleanResult = cleanResult.replace(/```\n?/g, '');
-      }
-      return JSON.parse(cleanResult);
-    } catch (error) {
-      console.error('单章大纲生成失败，原始内容:', result);
-      throw new Error('AI生成失败，请重试');
-    }
+    return this.parseJSON(result, '单章大纲');
   }
 
   buildSingleChapterOutlinePrompt(worldState, characters, summary, chapterInfo, items = [], locations = []) {
@@ -809,14 +924,24 @@ ${summary || '故事刚开始'}
   parseJSON(raw, label) {
     try {
       let clean = raw.trim();
-      if (clean.startsWith('```json')) {
-        clean = clean.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (clean.startsWith('```')) {
-        clean = clean.replace(/```\n?/g, '');
+      // 移除所有 markdown 代码块标记
+      clean = clean.replace(/```(?:json|js|javascript)?\s*\n?/gi, '').replace(/```\s*\n?/g, '');
+      // 提取第一个完整 JSON 对象/数组
+      const first = Math.min(
+        clean.indexOf('{') === -1 ? Infinity : clean.indexOf('{'),
+        clean.indexOf('[') === -1 ? Infinity : clean.indexOf('[')
+      );
+      const lastBrace = clean.lastIndexOf('}');
+      const lastBracket = clean.lastIndexOf(']');
+      const last = Math.max(lastBrace, lastBracket);
+      if (first !== Infinity && last > first) {
+        clean = clean.substring(first, last + 1);
       }
+      // 修复常见 AI JSON 错误
+      clean = clean.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
       return JSON.parse(clean);
     } catch (error) {
-      console.error(`${label}解析失败，原始内容:`, raw);
+      console.error(`${label}解析失败，原始内容前500字:`, raw?.substring(0, 500));
       throw new Error(`AI返回格式异常（${label}），请重试`);
     }
   }

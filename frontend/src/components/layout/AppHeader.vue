@@ -24,17 +24,14 @@
         <slot name="actions" />
         
         <!-- 主题切换 -->
-        <el-button 
+        <el-button
           v-if="showThemeToggle"
-          text
-          circle
           class="theme-btn"
           @click="toggleTheme"
+          size="small"
         >
-          <el-icon>
-            <Sunny v-if="themeStore.isDark" />
-            <Moon v-else />
-          </el-icon>
+          <el-icon><Sunny v-if="!themeStore.isDark" /><Moon v-else /></el-icon>
+          <span>{{ themeStore.isDark ? '黑底白字' : '白底黑字' }}</span>
         </el-button>
       </div>
     </div>
@@ -68,73 +65,62 @@ const toggleTheme = () => {
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  background: var(--bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.78);
+  backdrop-filter: blur(var(--blur-xl)) saturate(1.8);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(1.8);
+  border-bottom: 1px solid var(--border-glass);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
 .header-content {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 12px 24px;
+  padding: 14px 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1;
-  min-width: 0;
-}
+.header-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
 
 .back-btn {
-  font-size: 14px;
-  padding: 8px 12px;
+  font-size: var(--text-sm);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+.back-btn:hover {
+  background: var(--gradient-primary-subtle) !important;
 }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
+.header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
 .theme-btn {
-  font-size: 18px;
-  color: var(--text-secondary);
+  font-size: 13px;
+  transition: all var(--transition-fast);
 }
-
 .theme-btn:hover {
-  color: var(--primary);
+  transform: scale(1.05);
 }
 
-/* 移动端适配 */
 @media (max-width: 768px) {
-  .header-content {
-    padding: 10px 16px;
-  }
-  
-  .page-title {
-    font-size: 17px;
-  }
-  
-  .back-btn span {
-    display: none;
-  }
+  .header-content { padding: 10px 16px; }
+  .page-title { font-size: var(--text-base); }
+  .back-btn span { display: none; }
 }
 </style>

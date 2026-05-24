@@ -150,11 +150,13 @@ const saveConsent = (settings) => {
   bottom: 0;
   left: 0;
   right: 0;
-  background: #fff;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(var(--blur-xl));
+  -webkit-backdrop-filter: blur(var(--blur-xl));
+  box-shadow: var(--shadow-xl);
   z-index: 9999;
   padding: 20px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border-glass);
 }
 
 .cookie-content {
@@ -212,8 +214,9 @@ const saveConsent = (settings) => {
 }
 
 .accept-btn {
-  background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+  background: var(--gradient-primary);
   border: none;
+  box-shadow: var(--shadow-button);
 }
 
 .details-btn {

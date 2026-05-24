@@ -74,9 +74,9 @@ const apiKeyAuth = async (req, res, next) => {
   // 调试日志
   console.log('[Auth Debug]', req.path, 'userId:', req.userId, 'isGuest:', req.headers['x-guest-mode'] === 'true');
   
-  // 公开路由列表
-  const publicRoutes = ['/auth/register', '/auth/login', '/health', '/admin', '/public/', '/reports', '/announcement', '/maintenance-status'];
-  const isPublic = publicRoutes.some(route => req.path.includes(route));
+  // 公开路由列表（使用 startsWith 精确匹配路径前缀）
+  const publicPathPrefixes = ['/api/auth/', '/health', '/api/public/', '/api/reports', '/api/announcement', '/api/maintenance-status', '/api/admin/'];
+  const isPublic = publicPathPrefixes.some(prefix => req.path.startsWith(prefix));
   
   if (isPublic) {
     return next();

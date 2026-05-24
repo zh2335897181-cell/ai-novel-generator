@@ -21,7 +21,7 @@ class AdminController {
         
         // 章节统计
         const [chapterStats] = await conn.query(
-          'SELECT COUNT(*) as total, COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as today_new FROM content'
+          'SELECT COUNT(*) as total, COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as today_new FROM story_content'
         );
         
         // 举报统计
@@ -411,7 +411,7 @@ class AdminController {
       try {
         // 批量删除用户相关数据（使用 IN 子查询代替循环 N+1）
         await conn.query(
-          'DELETE FROM content WHERE novel_id IN (SELECT id FROM novel WHERE user_id = ?)',
+          'DELETE FROM story_content WHERE novel_id IN (SELECT id FROM novel WHERE user_id = ?)',
           [userId]
         );
         await conn.query(
@@ -533,7 +533,7 @@ class AdminController {
         }
 
         // 根据审核队列重新计算小说状态（自动处理reviewing/active/blocked转换）
-        await this.recomputeNovelStatus(conn, review.novel_id);
+        await recomputeNovelStatus(conn, review.novel_id);
 
         // 记录操作日志
         await conn.query(
@@ -706,7 +706,7 @@ class AdminController {
         } else if (action === 'block_content' && report.novel_id) {
           await conn.query('UPDATE novel SET status = ? WHERE id = ?', ['blocked', report.novel_id]);
         } else if (action === 'block_chapter' && report.content_id) {
-          await conn.query('UPDATE content SET status = ? WHERE id = ?', ['blocked', report.content_id]);
+          await conn.query('UPDATE story_content SET status = ? WHERE id = ?', ['blocked', report.content_id]);
         }
         
         // 记录操作日志
@@ -777,10 +777,12 @@ class AdminController {
         
         const [novels] = await conn.query(
           `SELECT n.*, u.username as author_name,
-                  (SELECT COUNT(*) FROM story_content WHERE novel_id = n.id) as chapter_count,
-                  (SELECT COUNT(*) FROM content_review WHERE novel_id = n.id AND status = 'pending') as pending_reviews
+                  COALESCE(sc.cnt, 0) as chapter_count,
+                  COALESCE(cr.pending_cnt, 0) as pending_reviews
            FROM novel n
            LEFT JOIN user u ON n.user_id = u.id
+           LEFT JOIN (SELECT novel_id, COUNT(*) as cnt FROM story_content GROUP BY novel_id) sc ON sc.novel_id = n.id
+           LEFT JOIN (SELECT novel_id, COUNT(*) as pending_cnt FROM content_review WHERE status = 'pending' GROUP BY novel_id) cr ON cr.novel_id = n.id
            WHERE ${whereClause}
            ORDER BY n.created_at DESC
            LIMIT ? OFFSET ?`,
@@ -869,7 +871,7 @@ class AdminController {
         }
         
         const [chapters] = await conn.query(
-          'SELECT * FROM content WHERE novel_id = ? ORDER BY chapter_number ASC',
+          'SELECT * FROM story_content WHERE novel_id = ? ORDER BY chapter_number ASC',
           [novelId]
         );
         
@@ -908,7 +910,7 @@ class AdminController {
       const conn = await pool.getConnection();
       
       try {
-        await conn.query('DELETE FROM content WHERE novel_id = ?', [novelId]);
+        await conn.query('DELETE FROM story_content WHERE novel_id = ?', [novelId]);
         await conn.query('DELETE FROM `character` WHERE novel_id = ?', [novelId]);
         await conn.query('DELETE FROM world_state WHERE novel_id = ?', [novelId]);
         await conn.query('DELETE FROM content_review WHERE novel_id = ?', [novelId]);
@@ -1058,7 +1060,7 @@ class AdminController {
         await conn.query(`ALTER TABLE novel ADD COLUMN IF NOT EXISTS status ENUM('active', 'blocked', 'reviewing') DEFAULT 'active'`);
         
         // 章节表添加状态字段
-        await conn.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS status ENUM('active', 'blocked', 'reviewing') DEFAULT 'active'`);
+        await conn.query(`ALTER TABLE story_content ADD COLUMN IF NOT EXISTS status ENUM('active', 'blocked', 'reviewing') DEFAULT 'active'`);
         
         // 内容审核表
         await conn.query(`
@@ -1254,14 +1256,18 @@ class AdminController {
       const codes = [];
       const conn = await pool.getConnection();
       try {
+        // 批量生成唯一码
         for (let i = 0; i < count; i++) {
           const code = 'INV' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 8).toUpperCase();
-          await conn.query(
-            'INSERT INTO invite_codes (code, created_by, max_uses, expires_at) VALUES (?, ?, ?, ?)',
-            [code, userId, maxUses, expiresAt || null]
-          );
           codes.push(code);
         }
+        // 批量插入
+        const placeholders = codes.map(() => '(?, ?, ?, ?)').join(', ');
+        const values = codes.flatMap(code => [code, userId, maxUses, expiresAt || null]);
+        await conn.query(
+          `INSERT INTO invite_codes (code, created_by, max_uses, expires_at) VALUES ${placeholders}`,
+          values
+        );
         res.json({ success: true, message: `成功生成 ${count} 个邀请码`, data: { codes } });
       } finally {
         conn.release();
@@ -1376,21 +1382,27 @@ class AdminController {
       }
       const conn = await pool.getConnection();
       try {
-        let added = 0, skipped = 0;
+        // 过滤有效词并去重
+        const items = [];
+        const seen = new Set();
         for (const item of words) {
-          const w = typeof item === 'string' ? { word: item, severity: 'medium' } : item;
-          if (!w.word) continue;
-          try {
-            await conn.query(
-              'INSERT INTO sensitive_words (word, severity, replacement, created_by) VALUES (?, ?, ?, ?)',
-              [w.word.trim(), w.severity || 'medium', w.replacement || null, req.user?.userId || 0]
-            );
-            added++;
-          } catch (e) {
-            if (e.code === 'ER_DUP_ENTRY') skipped++;
-            else throw e;
-          }
+          const w = typeof item === 'string' ? { word: item.trim(), severity: 'medium' } : item;
+          if (!w.word || seen.has(w.word)) continue;
+          seen.add(w.word);
+          items.push(w);
         }
+        if (items.length === 0) {
+          return res.json({ success: true, message: '没有可添加的敏感词' });
+        }
+        // 批量插入（INSERT IGNORE 跳过已存在的）
+        const placeholders = items.map(() => '(?, ?, ?, ?)').join(', ');
+        const values = items.flatMap(w => [w.word, w.severity || 'medium', w.replacement || null, req.user?.userId || 0]);
+        const [result] = await conn.query(
+          `INSERT IGNORE INTO sensitive_words (word, severity, replacement, created_by) VALUES ${placeholders}`,
+          values
+        );
+        const added = result.affectedRows;
+        const skipped = items.length - added;
         sensitiveWordService.invalidateCache();
         res.json({ success: true, message: `成功添加 ${added} 个，跳过 ${skipped} 个（已存在）` });
       } finally {
@@ -1459,38 +1471,6 @@ class AdminController {
   // ==================== 审核辅助方法 ====================
 
   // 根据审核队列重新计算小说状态
-  async recomputeNovelStatus(conn, novelId) {
-    const [currentRows] = await conn.query('SELECT status FROM novel WHERE id = ?', [novelId]);
-    const oldStatus = currentRows[0]?.status;
-
-    const [pendingRows] = await conn.query(
-      'SELECT COUNT(*) as count FROM content_review WHERE novel_id = ? AND status = "pending"',
-      [novelId]
-    );
-
-    let newStatus;
-    if (pendingRows[0].count > 0) {
-      await conn.query("UPDATE novel SET status = 'reviewing' WHERE id = ?", [novelId]);
-      newStatus = 'reviewing';
-    } else {
-      const [rejectedRows] = await conn.query(
-        'SELECT COUNT(*) as count FROM content_review WHERE novel_id = ? AND status = "rejected"',
-        [novelId]
-      );
-      newStatus = rejectedRows[0].count > 0 ? 'blocked' : 'active';
-      await conn.query('UPDATE novel SET status = ? WHERE id = ?', [newStatus, novelId]);
-    }
-
-    if (oldStatus !== newStatus) {
-      await conn.query(
-        'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
-        [0, 'novel_status_change', 'novel', novelId, JSON.stringify({ old_status: oldStatus, new_status: newStatus, trigger: 'auto' })]
-      );
-    }
-
-    return newStatus;
-  }
-
   // 批量审核内容
   async batchReviewContent(req, res) {
     try {
@@ -1543,7 +1523,7 @@ class AdminController {
 
         // 重新计算受影响小说的状态
         for (const novelId of affectedNovelIds) {
-          await this.recomputeNovelStatus(conn, novelId);
+          await recomputeNovelStatus(conn, novelId);
         }
 
         await conn.commit();
@@ -1667,6 +1647,39 @@ class AdminController {
       res.status(500).json({ success: false, message: error.message });
     }
   }
+}
+
+// 重新计算小说审核状态（独立函数，供类方法内部调用）
+async function recomputeNovelStatus(conn, novelId) {
+  const [currentRows] = await conn.query('SELECT status FROM novel WHERE id = ?', [novelId]);
+  const oldStatus = currentRows[0]?.status;
+
+  const [pendingRows] = await conn.query(
+    'SELECT COUNT(*) as count FROM content_review WHERE novel_id = ? AND status = "pending"',
+    [novelId]
+  );
+
+  let newStatus;
+  if (pendingRows[0].count > 0) {
+    await conn.query("UPDATE novel SET status = 'reviewing' WHERE id = ?", [novelId]);
+    newStatus = 'reviewing';
+  } else {
+    const [rejectedRows] = await conn.query(
+      'SELECT COUNT(*) as count FROM content_review WHERE novel_id = ? AND status = "rejected"',
+      [novelId]
+    );
+    newStatus = rejectedRows[0].count > 0 ? 'blocked' : 'active';
+    await conn.query('UPDATE novel SET status = ? WHERE id = ?', [newStatus, novelId]);
+  }
+
+  if (oldStatus !== newStatus) {
+    await conn.query(
+      'INSERT INTO admin_log (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [0, 'novel_status_change', 'novel', novelId, JSON.stringify({ old_status: oldStatus, new_status: newStatus, trigger: 'auto' })]
+    );
+  }
+
+  return newStatus;
 }
 
 export default new AdminController();

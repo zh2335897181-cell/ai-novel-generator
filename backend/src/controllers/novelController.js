@@ -437,23 +437,44 @@ class NovelController {
     }
   }
 
-  // 生成章节大纲（新功能）
+  // 生成章节大纲
   async generateChapterOutlines(req, res) {
     try {
-      const { novelId, chapterCount = 5, aiConfig } = req.body;
-      
+      const { novelId, chapterCount = 5, chapters, aiConfig } = req.body;
+
       if (!novelId) {
         return res.status(400).json({ success: false, message: '缺少novelId参数' });
       }
-      
-      console.log('收到章节大纲生成请求:', { novelId, chapterCount });
-      
+
+      console.log('收到章节大纲生成请求:', { novelId, chapterCount, chaptersCount: chapters?.length });
+
+      // 指定了章节列表 → 逐章生成并流式推送进度
+      if (chapters && chapters.length > 0) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+
+        const sendProgress = (data) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
+
+        try {
+          await novelService.generateChapterOutlinesWithProgress(novelId, chapters, aiConfig, sendProgress);
+        } catch (error) {
+          sendProgress({ type: 'error', message: error.message });
+        }
+        res.end();
+        return;
+      }
+
+      // 无章节列表 → 旧行为：一次性批量生成N章
       const result = await novelService.generateChapterOutlines(novelId, chapterCount, aiConfig);
       res.json({ success: true, data: result });
     } catch (error) {
       console.error('章节大纲生成失败:', error);
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         message: error.message
       });
     }
@@ -701,6 +722,7 @@ class NovelController {
       res.status(500).json({ success: false, message: error.message });
     }
   }
+
 }
 
 export default new NovelController();
