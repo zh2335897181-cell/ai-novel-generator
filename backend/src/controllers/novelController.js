@@ -317,6 +317,33 @@ class NovelController {
     }
   }
 
+  // 更新小说类型与风格（AI拆解后弹窗确认）
+  async updateGenreStyle(req, res) {
+    try {
+      const { novelId, genre, style } = req.body;
+
+      if (!novelId) {
+        return res.status(400).json({ success: false, message: '缺少novelId参数' });
+      }
+
+      const access = await this._checkAccess(novelId, req.userId, 'edit');
+      if (!access.allowed) {
+        return res.status(access.status).json({ success: false, message: access.message });
+      }
+
+      await novelService.updateGenreStyle(novelId, genre, style);
+
+      // 清除缓存
+      await cacheService.cacheNovelWorld(novelId, null);
+      await cacheService.del(cacheService.patterns.NOVEL(novelId));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
   // 生成小说（核心接口）
   async generate(req, res) {
     try {

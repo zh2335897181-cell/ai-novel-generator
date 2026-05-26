@@ -250,7 +250,8 @@ class ContentAuditor {
         { regex: /^第\d+章\s*$/gm, message: '章节标记不完整' }
       ],
       check: (content) => {
-        for (const pattern of this.rules[0]?.patterns || []) {
+        const rule = this.rules.find(r => r.name === 'forbidden_patterns');
+        for (const pattern of rule?.patterns || []) {
           if (pattern.regex.test(content)) {
             throw new Error(pattern.message);
           }

@@ -343,6 +343,14 @@ class NovelService {
     );
   }
 
+  // 更新小说类型和风格（AI拆解后用户确认）
+  async updateGenreStyle(novelId, genre, style) {
+    await pool.query(
+      'UPDATE world_state SET genre = ?, style = ? WHERE novel_id = ?',
+      [genre || null, style || null, novelId]
+    );
+  }
+
   // 核心：生成小说
   async generateStory(novelId, userInput, aiConfig) {
     const conn = await pool.getConnection();
@@ -351,35 +359,63 @@ class NovelService {
       const [worldState] = await conn.query('SELECT * FROM world_state WHERE novel_id = ?', [novelId]);
       const [characters] = await conn.query('SELECT * FROM character_state WHERE novel_id = ?', [novelId]);
       const [summary] = await conn.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
+      const [items] = await conn.query('SELECT * FROM item_state WHERE novel_id = ? ORDER BY id', [novelId]);
+      const [locations] = await conn.query('SELECT * FROM location_state WHERE novel_id = ? ORDER BY id', [novelId]);
+      const [minorCharacters] = await conn.query('SELECT * FROM minor_character_state WHERE novel_id = ? ORDER BY id', [novelId]);
+      const [timelineEvents] = await conn.query('SELECT * FROM timeline_events WHERE novel_id = ? ORDER BY event_date', [novelId]);
 
-      // 2. 调用AI生成小说
+      // 获取上一章内容和当前章节信息
+      const [lastChapter] = await conn.query(
+        'SELECT content, chapter_number, chapter_title FROM story_content WHERE novel_id = ? ORDER BY created_at DESC LIMIT 1',
+        [novelId]
+      );
+      const previousChapterContent = lastChapter.length > 0 ? lastChapter[0].content : '';
+      const nextChapterNumber = lastChapter.length > 0 ? lastChapter[0].chapter_number + 1 : 1;
+
+      // 获取当前章节大纲标题
+      const [chapterOutlines] = await conn.query(
+        'SELECT title FROM chapter_outline WHERE novel_id = ? AND chapter_number = ? LIMIT 1',
+        [novelId, nextChapterNumber]
+      );
+      const chapterTitle = chapterOutlines.length > 0 ? chapterOutlines[0].title : '';
+
+      // 2. 调用AI生成小说（传入完整上下文）
       const storyContent = await aiClient.generateStory(
         worldState[0],
         characters,
         summary[0]?.summary,
         userInput,
-        aiConfig
+        aiConfig,
+        items,
+        locations,
+        minorCharacters,
+        800,
+        '',
+        previousChapterContent,
+        timelineEvents,
+        nextChapterNumber,
+        chapterTitle
       );
 
-      // 3. 敏感词过滤
+      // 3. 敏感词过滤（无DB操作）
       const filtered = await sensitiveWordService.filterAsync(storyContent);
 
-      // 4. 保存生成的内容
+      // 4. 保存内容 + 审核（事务包裹）
+      await conn.beginTransaction();
       const [contentResult] = await conn.query(
         'INSERT INTO story_content (novel_id, content) VALUES (?, ?)',
         [novelId, filtered]
       );
 
-      // 自动提交到内容审核队列
+      // 自动提交到内容审核队列（使用过滤后的内容）
       try {
         const [[novelRow]] = await conn.query('SELECT user_id FROM novel WHERE id = ?', [novelId]);
         if (novelRow) {
-          // 设置小说状态为审核中
           await conn.query("UPDATE novel SET status = 'reviewing' WHERE id = ? AND status != 'reviewing'", [novelId]);
 
           const [reviewResult] = await conn.query(
             'INSERT INTO content_review (content_type, content_id, novel_id, content, user_id, status) VALUES (?, ?, ?, ?, ?, ?)',
-            ['chapter', contentResult.insertId, novelId, storyContent, novelRow.user_id, 'pending']
+            ['chapter', contentResult.insertId, novelId, filtered, novelRow.user_id, 'pending']
           );
 
           // 检查是否开启自动审核
@@ -387,7 +423,7 @@ class NovelService {
           if (settingsRows.length > 0 && (settingsRows[0].value === 'true' || settingsRows[0].value === '1')) {
             try {
               const { callAIForContentReview, parseAIReviewDecision } = await import('../utils/autoReview.js');
-              const aiText = await callAIForContentReview(storyContent);
+              const aiText = await callAIForContentReview(filtered);
               const result = parseAIReviewDecision(aiText);
               if (result.decision === 'approved' || result.decision === 'rejected') {
                 await conn.query(
@@ -404,14 +440,14 @@ class NovelService {
       } catch (reviewErr) {
         console.warn('[Review] 提交审核队列失败:', reviewErr.message);
       }
+      await conn.commit();
 
-      // 4. 调用AI提取摘要和更新
+      // 5. 调用AI提取摘要和更新（无DB操作，传入完整上下文）
       let updates;
       try {
-        updates = await aiClient.extractSummary(storyContent, worldState[0], characters, aiConfig);
+        updates = await aiClient.extractSummary(storyContent, worldState[0], characters, items, locations, minorCharacters, aiConfig);
       } catch (error) {
         console.error('摘要提取失败:', error);
-        // 如果摘要提取失败，使用默认值
         updates = {
           character_updates: [],
           world_updates: {},
@@ -419,9 +455,8 @@ class NovelService {
         };
       }
 
-      // 5. 更新角色状态（单独更新每个角色）
+      // 6. 更新角色/世界/摘要状态（事务包裹）
       await conn.beginTransaction();
-      
       if (updates.character_updates && updates.character_updates.length > 0) {
         for (const update of updates.character_updates) {
           await conn.query(
@@ -431,7 +466,6 @@ class NovelService {
         }
       }
 
-      // 6. 更新世界设定
       if (updates.world_updates && (updates.world_updates.rules || updates.world_updates.background)) {
         const [current] = await conn.query('SELECT * FROM world_state WHERE novel_id = ?', [novelId]);
         await conn.query(
@@ -444,7 +478,6 @@ class NovelService {
         );
       }
 
-      // 7. 更新摘要
       if (updates.summary) {
         await conn.query(
           'UPDATE story_summary SET summary = ? WHERE novel_id = ?',
@@ -459,7 +492,7 @@ class NovelService {
         updates: updates
       };
     } catch (error) {
-      await conn.rollback();
+      try { await conn.rollback(); } catch (_) { /* connection may already be released */ }
       console.error('生成小说失败:', error);
       throw error;
     } finally {
@@ -541,17 +574,18 @@ class NovelService {
   async generateChapterOutlines(novelId, chapterCount, aiConfig, specificChapters = null) {
     const conn = await pool.getConnection();
     try {
-      // 1. 查询当前状态（包含物品和地点）
+      // 1. 查询当前状态（包含全部要素）
       const [worldState] = await conn.query('SELECT * FROM world_state WHERE novel_id = ?', [novelId]);
       const [characters] = await conn.query('SELECT * FROM character_state WHERE novel_id = ?', [novelId]);
       const [items] = await conn.query('SELECT * FROM item_state WHERE novel_id = ?', [novelId]);
       const [locations] = await conn.query('SELECT * FROM location_state WHERE novel_id = ?', [novelId]);
+      const [minorCharacters] = await conn.query('SELECT * FROM minor_character_state WHERE novel_id = ?', [novelId]);
+      const [timelineEvents] = await conn.query('SELECT * FROM timeline_events WHERE novel_id = ? ORDER BY event_date', [novelId]);
       const [summary] = await conn.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
 
       // 2. 调用AI生成章节大纲
       let result;
       if (specificChapters && specificChapters.length > 0) {
-        // 为指定的章节生成大纲
         result = await aiClient.generateSpecificChapterOutlines(
           worldState[0],
           characters,
@@ -569,6 +603,8 @@ class NovelService {
           chapterCount,
           items,
           locations,
+          minorCharacters,
+          timelineEvents,
           aiConfig
         );
       }
@@ -762,6 +798,9 @@ class NovelService {
       // 查询当前小说状态
       const [worldState] = await conn.query('SELECT * FROM world_state WHERE novel_id = ?', [novelId]);
       const [characters] = await conn.query('SELECT * FROM character_state WHERE novel_id = ?', [novelId]);
+      const [items] = await conn.query('SELECT * FROM item_state WHERE novel_id = ?', [novelId]);
+      const [locations] = await conn.query('SELECT * FROM location_state WHERE novel_id = ?', [novelId]);
+      const [minorCharacters] = await conn.query('SELECT * FROM minor_character_state WHERE novel_id = ?', [novelId]);
       const [summary] = await conn.query('SELECT * FROM story_summary WHERE novel_id = ?', [novelId]);
 
       // 调用AI生成目录（支持分批）
@@ -771,6 +810,9 @@ class NovelService {
         summary[0]?.summary,
         chapterCount,
         aiConfig,
+        items,
+        locations,
+        minorCharacters,
         onProgress
       );
 
@@ -1086,7 +1128,7 @@ class NovelService {
 
             const [reviewResult] = await conn.query(
               'INSERT INTO content_review (content_type, content_id, novel_id, content, user_id, status) VALUES (?, ?, ?, ?, ?, ?)',
-              ['chapter', savedStoryContentId, novelId, fullContent, novelRow.user_id, 'pending']
+              ['chapter', savedStoryContentId, novelId, filtered, novelRow.user_id, 'pending']
             );
 
             // 检查是否开启自动审核
@@ -1094,7 +1136,7 @@ class NovelService {
             if (settingsRows.length > 0 && (settingsRows[0].value === 'true' || settingsRows[0].value === '1')) {
               try {
                 const { callAIForContentReview, parseAIReviewDecision } = await import('../utils/autoReview.js');
-                const aiText = await callAIForContentReview(fullContent);
+                const aiText = await callAIForContentReview(filtered);
                 const result = parseAIReviewDecision(aiText);
                 if (result.decision === 'approved' || result.decision === 'rejected') {
                   await conn.query(
@@ -1346,6 +1388,12 @@ class NovelService {
       );
       const nextChapterTitle = tocRow.length > 0 ? tocRow[0].title : '';
 
+      // 查询物品、地点、配角、时间线
+      const [items] = await pool.query('SELECT name, type, owner, status FROM item_state WHERE novel_id = ?', [novelId]);
+      const [locations] = await pool.query('SELECT name, type, status, description FROM location_state WHERE novel_id = ?', [novelId]);
+      const [minorCharacters] = await pool.query('SELECT name, role, status FROM minor_character_state WHERE novel_id = ?', [novelId]);
+      const [timelineEvents] = await pool.query('SELECT title, event_date, type, description, related_chapter FROM timeline_events WHERE novel_id = ? ORDER BY event_date', [novelId]);
+
       console.log('[PlotSuggestions] 下一章:', nextChapterNumber, 'TOC标题:', nextChapterTitle || '(无)');
 
       // 获取上一章信息
@@ -1359,6 +1407,12 @@ class NovelService {
         ? `你是小说剧情策划。本书下一章目录已定为《${nextChapterTitle}》。你的唯一任务是：为这一章构思5个具体场景/切入角度，直接实现这个标题所暗示的剧情。忽略其他干扰信息，紧扣标题。`
         : '你是一位专业的小说编剧，擅长构思精彩的剧情转折和冲突。回答简洁有力。';
 
+      // 资源摘要
+      const itemSummary = items.map(i => `${i.name}(${i.type||'?'}/${i.owner||'无主'})`).join('、') || '暂无';
+      const locSummary = locations.map(l => l.name).join('、') || '暂无';
+      const minorSummary = minorCharacters.map(m => `${m.name}(${m.role||'?'})`).join('、') || '暂无';
+      const tlSummary = timelineEvents.slice(-5).map(e => `${e.title}(${e.type})`).join(' → ') || '暂无';
+
       const prompt = nextChapterTitle
         ? `## 任务 ##
 为第${nextChapterNumber}章《${nextChapterTitle}》构思5个具体的剧情展开方案。
@@ -1371,12 +1425,17 @@ class NovelService {
 世界观：${worldState?.background || '未设定'}
 规则：${worldState?.rules || '未设定'}
 角色：${characters?.map(c => `${c.name}(${c.realm || 'Lv.' + c.level})`).join('、') || '暂无'}
+配角：${minorSummary}
+可用物品：${itemSummary}
+可用地点：${locSummary}
+时间线：${tlSummary}
 前情：${summary || '故事刚开始'}
 承接：${lastChapterInfo}
 
 ## 要求 ##
 - 5个方案都要直接服务于标题《${nextChapterTitle}》
 - 每个方案20-40字，一句话点明本章的核心情节
+- 注意利用可用物品和地点增加场景具体性
 - 5个方案给出5种不同切入角度
 
 ## 输出格式 ##
@@ -1397,6 +1456,18 @@ class NovelService {
 ## 主要角色 ##
 ${characters?.map(c => `- ${c.name}（${c.realm || 'Lv.' + c.level}，状态：${c.status}）`).join('\n') || '暂无'}
 
+## 配角 ##
+${minorSummary}
+
+## 可用物品 ##
+${itemSummary}
+
+## 可用地点 ##
+${locSummary}
+
+## 时间线 ##
+${tlSummary}
+
 ## 当前剧情摘要 ##
 ${summary || '故事刚开始'}
 
@@ -1405,6 +1476,7 @@ ${lastChapterInfo}
 
 ## 要求 ##
 - 每个建议30-60字
+- 结合可用物品/地点给出具体场景建议
 - 不要写分章节结构
 
 ## 输出格式 ##
@@ -1416,32 +1488,15 @@ ${lastChapterInfo}
 5. 建议五`;
 
       // 调用AI生成建议
-      const { apiKey, baseURL, model } = resolveAIConfig(aiConfig);
-
-      const response = await fetch(`${baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.9,
-          max_tokens: 600
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error?.message || `AI API错误: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content || '';
+      const content = await aiClient.chat(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        0.9,
+        aiConfig,
+        600
+      );
 
       // 解析建议
       const suggestions = content
@@ -1451,31 +1506,14 @@ ${lastChapterInfo}
         .filter(s => s.length > 0)
         .slice(0, 5);
 
-      // 如果解析失败，返回默认建议
       if (suggestions.length === 0) {
-        suggestions.push(
-          '主角偶然遇到一位神秘商人，获得关于主线的重要情报',
-          '隐藏的敌人露出马脚，主角发现自己已身处险境',
-          '主角在危机中突破修为瓶颈，但付出了意想不到的代价',
-          '一位旧识突然出现，带来过去被遗忘的秘密',
-          '一件来历不明的宝物出现，各方势力开始暗中争夺'
-        );
+        throw new Error('AI返回的建议格式不正确');
       }
 
       return { suggestions, chapterNumber: nextChapterNumber, chapterTitle: nextChapterTitle };
     } catch (error) {
       console.error('生成剧情建议失败:', error);
-      return {
-        suggestions: [
-          '主角偶然遇到一位神秘商人，获得关于主线的重要情报',
-          '隐藏的敌人露出马脚，主角发现自己已身处险境',
-          '主角在危机中突破修为瓶颈，但付出了意想不到的代价',
-          '一位旧识突然出现，带来过去被遗忘的秘密',
-          '一件来历不明的宝物出现，各方势力开始暗中争夺'
-        ],
-        chapterNumber: 0,
-        chapterTitle: ''
-      };
+      throw error;
     }
   }
 
@@ -1493,8 +1531,14 @@ ${lastChapterInfo}
       'SELECT chapter_title, content FROM story_content WHERE novel_id = ? ORDER BY created_at DESC LIMIT 3',
       [novelId]
     );
+    const [items] = await pool.query('SELECT name, type, owner, status FROM item_state WHERE novel_id = ?', [novelId]);
+    const [locations] = await pool.query('SELECT name, type, status FROM location_state WHERE novel_id = ?', [novelId]);
+    const [otherChars] = await pool.query('SELECT name, role, status FROM minor_character_state WHERE novel_id = ?', [novelId]);
 
     const recentStory = chapters.map(c => c.chapter_title + '\n' + (c.content || '').slice(0, 500)).join('\n---\n');
+    const itemCtx = items.map(i => `${i.name}(${i.owner||'无主'}/${i.status})`).join('、') || '暂无';
+    const locCtx = locations.map(l => l.name).join('、') || '暂无';
+    const otherCtx = otherChars.map(c => `${c.name}(${c.role||''})`).join('、') || '暂无';
 
     const systemPrompt = `你是一位擅长写人物对话的剧作家。你笔下的对话让读者忘记是在看文字，而是仿佛能听到角色的声音、看到他们的表情。
 
@@ -1526,6 +1570,10 @@ ${char1[0].realm ? `- 境界：${char1[0].realm}` : ''}
 ${char2[0].realm ? `- 境界：${char2[0].realm}` : ''}
 
 对话场景：${sceneContext || '日常相遇'}
+
+可用物品：${itemCtx}
+可选地点：${locCtx}
+在场其他角色：${otherCtx}
 
 近期故事情节参考：
 ${recentStory || '故事刚开始'}

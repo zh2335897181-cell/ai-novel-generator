@@ -10,6 +10,36 @@ export function resolveAIConfig(aiConfig = {}) {
 }
 
 class AIClient {
+  // 判断错误是否可重试（5xx、网络错误、限流）
+  _isRetryableError(error) {
+    const status = error.response?.status;
+    if (status && status >= 500 && status < 600) return true;
+    if (status === 429) return true; // rate limit
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') return true;
+    if (error.message?.includes('timeout')) return true;
+    return false;
+  }
+
+  // 带重试的AI调用
+  async _withRetry(fn, maxRetries = 2) {
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries && this._isRetryableError(error)) {
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s
+          console.warn(`[AI] 调用失败，${delay}ms后重试 (${attempt + 1}/${maxRetries}):`, error.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        break;
+      }
+    }
+    throw lastError;
+  }
+
   async chat(messages, temperature = 0.7, config, maxTokens = 2000) {
     const { apiKey, baseURL, model } = resolveAIConfig(config);
 
@@ -17,7 +47,7 @@ class AIClient {
       throw new Error('请先配置AI API Key');
     }
 
-    try {
+    return this._withRetry(async () => {
       const response = await axios.post(
         `${baseURL}/chat/completions`,
         {
@@ -31,27 +61,27 @@ class AIClient {
           headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 120000
         }
       );
       return response.data.choices[0].message.content;
-    } catch (error) {
+    }).catch(error => {
       console.error('AI调用失败:', error.response?.data || error.message);
       throw new Error(error.response?.data?.error?.message || 'AI生成失败');
-    }
+    });
   }
 
   // 流式聊天（新增）
   async chatStream(messages, temperature = 0.7, config, onChunk, maxTokens = 2000) {
-    const apiKey = config?.apiKey || process.env.AI_API_KEY;
-    const baseURL = config?.baseURL || process.env.AI_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = config?.model || process.env.AI_MODEL || 'deepseek-v4-flash';
+    const { apiKey, baseURL, model } = resolveAIConfig(config);
 
     if (!apiKey) {
       throw new Error('请先配置AI API Key');
     }
 
-    try {
+    // 流式调用支持连接级重试（流开始后不重试）
+    const doStreamRequest = async () => {
       const response = await axios.post(
         `${baseURL}/chat/completions`,
         {
@@ -72,17 +102,27 @@ class AIClient {
       );
 
       let fullContent = '';
-      
+      const decoder = new TextDecoder('utf-8', { stream: true });
+      let lineBuffer = '';
+
       return new Promise((resolve, reject) => {
         response.data.on('data', (chunk) => {
-          const lines = chunk.toString().split('\n').filter(line => line.trim() !== '');
-          
+          const text = decoder.decode(chunk, { stream: true });
+          lineBuffer += text;
+
+          // SSE lines end with \n\n, process complete lines
+          const lines = lineBuffer.split('\n');
+          // Keep the last (potentially incomplete) line in the buffer
+          lineBuffer = lines.pop() || '';
+
           for (const line of lines) {
-            if (line.includes('[DONE]')) continue;
-            if (!line.startsWith('data: ')) continue;
-            
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed.includes('[DONE]')) continue;
+            if (!trimmed.startsWith('data: ')) continue;
+
             try {
-              const data = JSON.parse(line.substring(6));
+              const data = JSON.parse(trimmed.substring(6));
               const content = data.choices[0]?.delta?.content || '';
               if (content) {
                 fullContent += content;
@@ -95,6 +135,22 @@ class AIClient {
         });
 
         response.data.on('end', () => {
+          // Process any remaining buffered data
+          try {
+            const final = decoder.decode();
+            lineBuffer += final;
+            const remaining = lineBuffer.trim();
+            if (remaining && remaining.startsWith('data: ') && !remaining.includes('[DONE]')) {
+              try {
+                const data = JSON.parse(remaining.substring(6));
+                const content = data.choices[0]?.delta?.content || '';
+                if (content) {
+                  fullContent += content;
+                  onChunk(content);
+                }
+              } catch (e) { /* ignore */ }
+            }
+          } catch (e) { /* ignore */ }
           resolve(fullContent);
         });
 
@@ -102,19 +158,21 @@ class AIClient {
           reject(error);
         });
       });
-    } catch (error) {
+    };
+
+    return this._withRetry(doStreamRequest).catch(error => {
       console.error('AI流式调用失败:', error.response?.data || error.message);
       throw new Error(error.response?.data?.error?.message || 'AI生成失败');
-    }
+    });
   }
 
   // 生成小说内容
-  async generateStory(worldState, characters, summary, userInput, config, wordCount = 800) {
-    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, [], [], [], wordCount);
+  async generateStory(worldState, characters, summary, userInput, config, items = [], locations = [], minorCharacters = [], wordCount = 800, ragContext = '', previousChapterContent = '', timelineEvents = [], chapterNumber = 1, chapterTitle = '') {
+    const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, items, locations, minorCharacters, wordCount, ragContext, previousChapterContent, timelineEvents, chapterNumber, chapterTitle);
     return await this.chat([{ role: 'user', content: prompt }], 0.8, config);
   }
 
-  // 生成小说内容（流式）；ragContext 为检索增强片段，可为空
+  // 生成小说内容（流式）
   async generateStoryStream(worldState, characters, summary, userInput, config, items, locations, minorCharacters, wordCount, onChunk, ragContext = '', previousChapterContent = '', timelineEvents = [], chapterNumber = 1, chapterTitle = '') {
     const prompt = this.buildStoryPrompt(worldState, characters, summary, userInput, items, locations, minorCharacters, wordCount, ragContext, previousChapterContent, timelineEvents, chapterNumber, chapterTitle);
     return await this.chatStream([{ role: 'user', content: prompt }], 0.8, config, onChunk);
@@ -158,9 +216,9 @@ class AIClient {
     return this.parseJSON(result, '大纲拆解');
   }
 
-  // 生成章节大纲（新功能）
-  async generateChapterOutlines(worldState, characters, summary, chapterCount, items, locations, config) {
-    const prompt = this.buildChapterOutlinePrompt(worldState, characters, summary, chapterCount, items, locations);
+  // 生成章节大纲
+  async generateChapterOutlines(worldState, characters, summary, chapterCount, items, locations, minorCharacters = [], timelineEvents = [], config) {
+    const prompt = this.buildChapterOutlinePrompt(worldState, characters, summary, chapterCount, items, locations, minorCharacters, timelineEvents);
     const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 8000);
     return this.parseJSON(result, '章节大纲');
   }
@@ -181,51 +239,90 @@ class AIClient {
 
   // 构建小说生成Prompt
   buildStoryPrompt(worldState, characters, summary, userInput, items = [], locations = [], minorCharacters = [], wordCount = 800, ragContext = '', previousChapterContent = '', timelineEvents = [], chapterNumber = 1, chapterTitle = '') {
-    const characterList = characters.map(c => {
-      let attrs = {};
-      try {
-        if (typeof c.attributes === 'string') {
-          attrs = JSON.parse(c.attributes);
-        } else if (c.attributes && typeof c.attributes === 'object') {
-          attrs = c.attributes;
-        }
-      } catch (e) {
-        attrs = {};
+    // 解析 world_state.extra（可能存储了世界观扩展信息）
+    let worldExtra = '';
+    try {
+      if (worldState?.extra) {
+        const extra = typeof worldState.extra === 'string' ? JSON.parse(worldState.extra) : worldState.extra;
+        const extraParts = [];
+        if (extra.power_system) extraParts.push(`力量体系: ${extra.power_system}`);
+        if (extra.world_levels) extraParts.push(`世界层级: ${extra.world_levels}`);
+        if (extra.organizations) extraParts.push(`主要势力: ${extra.organizations}`);
+        if (extra.history_events) extraParts.push(`重大历史: ${extra.history_events}`);
+        if (extra.special_rules) extraParts.push(`特殊规则: ${extra.special_rules}`);
+        if (extraParts.length > 0) worldExtra = extraParts.join('\n');
       }
-      const realmInfo = c.realm ? `境界:${c.realm}` : `等级:Lv.${c.level}`;
-      return `【${c.name}】${realmInfo} | 状态:${c.status}`;
-    }).join('\n');
+    } catch (e) { /* ignore */ }
+
+    // 解析境界体系
+    let realmInfo = '';
+    try {
+      if (worldState?.realm_system) {
+        const rs = typeof worldState.realm_system === 'string' ? JSON.parse(worldState.realm_system) : worldState.realm_system;
+        if (rs.realms && Array.isArray(rs.realms) && rs.realms.length > 0) {
+          realmInfo = `\n境界体系: ${rs.realms.join(' → ')}`;
+        } else if (Array.isArray(rs) && rs.length > 0) {
+          realmInfo = `\n境界体系: ${rs.join(' → ')}`;
+        }
+      }
+    } catch (e) { /* ignore */ }
 
     const aliveCharacters = characters.filter(c => c.status !== '死亡');
     const deadCharacters = characters.filter(c => c.status === '死亡').map(c => c.name);
-
     const aliveList = aliveCharacters.map(c => c.name).join('、');
     const deadList = deadCharacters.join('、');
 
     const aliveCharacterDetails = aliveCharacters.map(c => {
-      const realmInfo = c.realm ? `境界:${c.realm}` : `等级:Lv.${c.level}`;
-      return `【${c.name}】${realmInfo}`;
+      let attrs = {};
+      try {
+        if (typeof c.attributes === 'string') attrs = JSON.parse(c.attributes);
+        else if (c.attributes && typeof c.attributes === 'object') attrs = c.attributes;
+      } catch (e) { attrs = {}; }
+      const attrStr = Object.keys(attrs).length > 0 ? ` | 属性: ${JSON.stringify(attrs)}` : '';
+      const realmInfoStr = c.realm ? `境界:${c.realm}` : `等级:Lv.${c.level}`;
+      return `【${c.name}】${realmInfoStr}${attrStr}`;
     }).join('\n');
 
     const itemList = items.length > 0
-      ? items.map(i => `【${i.name}】类型:${i.type || '未知'} | 持有者:${i.owner || '无主'} | 状态:${i.status}`).join('\n')
+      ? items.map(i => {
+          let attrs = {};
+          try {
+            if (typeof i.attributes === 'string') attrs = JSON.parse(i.attributes);
+            else if (i.attributes && typeof i.attributes === 'object') attrs = i.attributes;
+          } catch (e) { attrs = {}; }
+          const attrStr = Object.keys(attrs).length > 0 ? ` | 详情: ${JSON.stringify(attrs)}` : '';
+          return `【${i.name}】类型:${i.type || '未知'} | 持有者:${i.owner || '无主'} | 状态:${i.status}${attrStr}`;
+        }).join('\n')
       : '暂无';
 
     const locationList = locations.length > 0
-      ? locations.map(l => `【${l.name}】类型:${l.type || '未知'} | 状态:${l.status} | 描述:${l.description || '无'}`).join('\n')
+      ? locations.map(l => {
+          let attrs = {};
+          try {
+            if (typeof l.attributes === 'string') attrs = JSON.parse(l.attributes);
+            else if (l.attributes && typeof l.attributes === 'object') attrs = l.attributes;
+          } catch (e) { attrs = {}; }
+          const attrStr = Object.keys(attrs).length > 0 ? ` | 属性: ${JSON.stringify(attrs)}` : '';
+          return `【${l.name}】类型:${l.type || '未知'} | 状态:${l.status} | 描述:${l.description || '无'}${attrStr}`;
+        }).join('\n')
       : '暂无';
 
     const minorCharacterList = minorCharacters.length > 0
       ? minorCharacters.map(m => {
-          const itemsStr = m.items ? (typeof m.items === 'string' ? m.items : JSON.stringify(m.items)) : '[]';
-          return `【${m.name}】角色:${m.role || '路人'} | 状态:${m.status}`;
+          let charItems = '';
+          try {
+            const parsed = m.items ? (typeof m.items === 'string' ? JSON.parse(m.items) : m.items) : null;
+            if (Array.isArray(parsed) && parsed.length > 0) charItems = ` | 持有物品: ${parsed.join(', ')}`;
+          } catch (e) { /* ignore */ }
+          const desc = m.description ? ` | 描述: ${m.description}` : '';
+          const appear = m.first_appearance ? ` | 首次出场: 第${m.first_appearance}章` : '';
+          return `【${m.name}】角色:${m.role || '路人'} | 状态:${m.status}${desc}${charItems}${appear}`;
         }).join('\n')
       : '暂无';
 
     const closedLocations = locations.filter(l => l.status === '封闭' || l.status === '毁灭').map(l => l.name);
     const lostItems = items.filter(i => i.status === '丢失' || i.status === '损毁').map(i => i.name);
 
-    // 构建时间线上下文
     const timelineContext = timelineEvents && timelineEvents.length > 0
       ? timelineEvents.map(e => {
           const dateStr = e.event_date ? new Date(e.event_date).toLocaleDateString() : '时间未定';
@@ -242,21 +339,35 @@ class AIClient {
       ? `这是第${chapterNumber}章，本章标题：《${chapterTitle}》`
       : `这是第${chapterNumber}章`;
 
-    return `你是一位拥有多年创作经验的畅销小说家，你的文字充满人情味和文学质感。你笔下的人物有血有肉，对话自然不做作，情感真实动人。你不是在"生成内容"，而是在用心讲述一个让读者沉浸的故事。
+    // 根据类型和风格生成叙事声音指导
+    const genre = worldState?.genre || '';
+    const style = worldState?.style || '';
+    const narrativeVoice = this._buildNarrativeVoice(genre, style, characters);
+    const antiPatterns = this._buildAntiAIPatterns();
+    const genreGuidance = this._buildGenreGuidance(genre);
+
+    return `你是一位中文网络小说作家。你的文字有辨识度——读者看几句就知道是你的作品，而不是AI生成的。你有自己的语言习惯、常用句式和独特的节奏感。你不写"正确但无趣"的文字，你写"有毛边但鲜活"的文字。
 
 ## 【当前章节信息】 ##
 ${chapterInfo}
-⚠️ 请围绕本章标题展开创作，确保内容与标题主题一致。如果这是目录中的章节，请严格遵循标题提示的故事方向。
+⚠️ 请围绕本章标题展开创作，确保内容与标题主题一致。
+
+${narrativeVoice}
+
+======================== 反AI模式规则 ========================
+${antiPatterns}
+
+======================== ${genre ? genre + '类型' : ''}创作指导 ========================
+${genreGuidance}
 
 ## 【核心写作原则】 ##
-1. **展示而非说教**：通过动作、对话、环境描写来传达情感和情节，而非平铺直叙
-2. **情感驱动**：每个场景都应有情感内核——喜悦、愤怒、恐惧、悲伤、期待、矛盾……让读者能感受到角色的内心波动
-3. **生动的感官描写**：运用视觉、听觉、嗅觉、触觉——风声、气味、温度、光影，让场景立体可感
-4. **真实的对话**：对话要有潜台词，人物各有口癖和说话方式，不追求完美而是追求"像人在说话"
-5. **节奏变化**：紧张时用短句，舒缓时用长句描写，张弛有度
-6. **细节的力量**：用具体的细节打动人心——一个颤抖的手指、一阵沉默、一道意味深长的目光
-7. **留白与含蓄**：不要把所有情感都直白说出，让读者自己去体会
-
+1. **展示而非说教**：用动作、对话、环境来传达情感。"他的手在发抖"比"他很紧张"好一百倍
+2. **情感驱动**：每个场景有情感内核。不要写"他很愤怒"，写"他一脚踹翻了桌子，茶盏碎了一地，屋里鸦雀无声"
+3. **感官细节**：每500字至少出现一种具体感官——铁锈的气味、冰凉的青石板、远处模糊的叫卖声、指腹摩挲粗糙剑柄的触感
+4. **对话即性格**：每个人物说话方式不同。有人每句不超过五个字，有人滔滔不绝但总跑题，有人说话带口头禅
+5. **节奏变化**：紧张时短句连击，舒缓时长句铺陈。不要每段都是"他做了A，然后B，接着C"
+6. **留白**：重要的情感不要直接说出来。用沉默、动作、环境来暗示
+7. **具体而非抽象**：不说"一个强大的法宝"，说"一枚核桃大小的铜铃，晃动时发出令人牙酸的嗡鸣"
 
 ## 【绝对禁止 - 违反将导致严重后果】 ##
 🚫 死亡角色绝对不能出现、不能复活、不能以任何形式提及
@@ -290,10 +401,10 @@ ${itemList || '无'}
 ${locationList || '无'}
 
 ## 【世界设定】 ##
-类型：${worldState?.genre || '未知'}
-风格：${worldState?.style || '通用风格'}
+类型：${genre || '未知'}
+风格：${style || '通用风格'}${realmInfo}
 规则：${worldState?.rules || '无'}
-背景：${worldState?.background || '无'}${writingStyle}
+背景：${worldState?.background || '无'}${worldExtra ? '\n扩展设定:\n' + worldExtra : ''}${writingStyle}
 
 ## 【当前剧情摘要】 ##
 ${summary || '故事刚开始'}
@@ -320,16 +431,137 @@ ${userInput}
 11. 必须遵循世界规则
 12. 只输出小说正文，不要输出任何JSON或说明
 
-## 【写作前准备】 ##
-在开始创作之前，请先在心里确认：
-- 上一章结尾的场景是什么？人物此刻的心情如何？
-- 本章的情感主线是什么？（紧张/温情/悲壮/热血/悬疑…）
-- 本章将使用哪些角色？他们各自的性格和动机是什么？
-- 哪些细节可以让这个场景更具感染力？（声音、气味、光线、温度…）
-- 人物之间有什么未说出口的情绪和潜台词？
-- 本章在时间线中的位置？（参考时间线事件）
+## 【写作前自检】 ##
+下笔前在心里过一遍：
+- 上一章结尾的场景和人物情绪是什么？
+- 本章的情感主线是什么？（不要每章都一样）
+- 哪些角色出场？他们各自的性格和口头禅是什么？
+- 有没有哪句话读者能"听"到声音、"闻"到气味、"感受"到温度？
+- 人物的对话里有潜台词吗？还是把所有话都说透了？
+- 本章出现了多少次"突然"、"立刻"、"顿时"？——如果有，删掉重写
 
-现在，以一位作家的心态，开始创作（${wordCount}字）：`;
+现在，开始创作（${wordCount}字）：`;
+  }
+
+  // 根据类型/风格构建叙事声音
+  _buildNarrativeVoice(genre, style, characters) {
+    const mainChar = characters?.find(c => c.status !== '死亡');
+    const charName = mainChar?.name || '主角';
+
+    const voiceMap = {
+      '热血爽文': `【叙事声音】采用快节奏、高冲击力的叙事。短句为主，动词有力。像战鼓一样有节奏感。${charName}的视角主导叙事，读者通过他的眼睛感受每一次突破和战斗。`,
+      '轻松搞笑': `【叙事声音】采用轻松诙谐的语调。叙事中可以穿插内心吐槽、意外反转、反差萌。不必每句话都严肃，允许幽默的比喻和夸张。${charName}的内心OS可以很有意思。`,
+      '沉稳厚重': `【叙事声音】采用沉稳、克制的语调。句子可以稍长，描写细腻，节奏从容。像一个老者在爐火旁讲故事。不追求爽快，追求余味。`,
+      '诙谐幽默': `【叙事声音】叙事中融入冷幽默和反讽。对话可以有机锋，描写可以有反差。人物可以有各种"不完美"的小动作和小毛病。`,
+      '暗黑残酷': `【叙事声音】采用冷峻、克制的笔调。不渲染暴力本身，但通过细节和后果让人感到寒意。留白比直写更有力。道德灰色地带是故事的底色。`,
+      '温馨治愈': `【叙事声音】采用温暖、细腻的笔调。关注日常中的小美好，人物之间的羁绊和善意。节奏舒缓但不拖沓。`,
+      '史诗宏大': `【叙事声音】采用开阔的叙事视野。适当使用多线并进、视角切换。语言有厚重感，不拘泥于琐碎细节而是抓住时代洪流中人物的命运。`,
+      '紧张刺激': `【叙事声音】采用紧凑的、高密度的叙事。悬念层层递进，每个章节结尾留钩子。多用短段、短句营造呼吸急促的阅读节奏。`,
+      '悬疑推理': `【叙事声音】采用冷静、精确的叙事。细节是关键——一个不起眼的物品、一句看似随意的话都可能是伏笔。信息释放有节制，让读者自己拼图。`,
+      '文艺细腻': `【叙事声音】采用文学性较强的语言。注重意象的营造、情绪的流淌。句子可以有韵律感，描写可以入微。`,
+      '写实冷峻': `【叙事声音】采用白描式的语言，克制、干净。不煽情、不渲染。像纪录片一样呈现事件和人物，让读者自己做判断。`,
+    };
+
+    let voice = voiceMap[style] || '';
+
+    // 如果没有匹配的风格，根据类型生成
+    if (!voice) {
+      if (genre?.includes('修仙') || genre?.includes('玄幻')) {
+        voice = `【叙事声音】采用半文半白的语言风格，在古典韵味和现代阅读感之间取平衡。${charName}的成长是主线，每次突破应有实感而非一笔带过。`;
+      } else if (genre?.includes('都市')) {
+        voice = `【叙事声音】采用现代、利落的语言。对话要像真实的人在说话，场景要能让读者在脑海中"看到"。`;
+      } else if (genre?.includes('科幻')) {
+        voice = `【叙事声音】采用理性但不冰冷的语调。科技设定通过人物体验来呈现，不生硬解释。`;
+      } else if (genre?.includes('武侠')) {
+        voice = `【叙事声音】采用有古风韵味但不生涩的语言。武打场面重在动作的节奏感和画面感，不堆砌招式名。`;
+      }
+    }
+
+    if (!voice) {
+      voice = `【叙事声音】发展出你自己的叙事声音。语言要有辨识度——读者读几句就知道是你的文字。`;
+    }
+
+    return voice;
+  }
+
+  // 构建反AI模式规则
+  _buildAntiAIPatterns() {
+    return `以下是AI写作最常见的问题。你的任务不是避免它们，而是让你的文字看起来根本不像AI写的：
+
+❌ AI句式一："X不仅…而且…更…"
+   例：这不仅是一次考验，而且是一次蜕变，更是一次重生
+   → 这种句式出现一次都嫌多。换说法："考验也好，蜕变也罢——他只需要活下来。"
+
+❌ AI句式二："似乎…却又…仿佛…"
+   例：他似乎想说什么，却又欲言又止，仿佛有什么难言之隐
+   → 太套路了。"他张了张嘴。什么也没说。"
+
+❌ AI句式三：大段的情绪分析
+   例：他感到一阵复杂的情绪涌上心头，有愤怒，有不甘，还有一丝说不清道不明的惆怅
+   → 不要分析情绪。写他做了什么：他盯着那封信看了很久，然后慢慢把它折起来，放进口袋里。
+
+❌ AI句式四：每段结构相同
+   不要：描写→对话→内心→总结 → 描写→对话→内心→总结 → ...
+   段落之间应该有呼吸感。有的段落可以只有一句对话。有的可以全是动作。
+
+❌ AI句式五：滥用"突然""立刻""顿时""随即"
+   这些词每章最多出现3次。情节的转折靠情境推动，不靠"突然"来制造紧张感。
+
+❌ AI句式六：人物对话像是在做报告
+   "根据我的观察，当前的局势对我们非常不利，我建议我们应该..."
+   → 真实的人不这样说话。试试："妈的，麻烦了。"
+
+❌ AI句式七：感情戏写成情感说明书
+   不说"两人之间的气氛变得暧昧起来"。
+   写：她低头整理衣角，他没话找话地说了句今天天气不错。两人同时沉默了五秒。有点太长了。
+
+❌ AI句式八：战斗场面写成招式列表
+   不说"他先是使出一招横扫千军，紧接着接上一招回马枪"。
+   写动作的节奏和结果：剑锋划过空气的尖啸，金属碰撞的火星，虎口震裂的血。
+
+❌ AI句式九：结尾总是"升华"
+   不要让每章结尾都像中学生作文的"点题"。有时戛然而止更有力。有时一个画面就够了。
+
+❌ AI句式十：形容词通货膨胀
+   不要把"好"写成"极好"，再写成"无与伦比的卓越"。
+   具体比夸张有力量。"他很强"不如"他一拳打穿了半尺厚的石墙"。`;
+  }
+
+  // 根据类型生成创作指导
+  _buildGenreGuidance(genre) {
+    if (!genre) return '根据你的判断选择最合适的叙事方式。';
+
+    const guidance = {
+      '修仙': `- 境界突破要有仪式感，不是简单的"突破了"，而是身体、感知、天象的真实改变
+- 功法的描写要有"质感"——这本残卷为什么特别？它的来历、它的代价、它的限制
+- 修炼不是打怪升级。每次突破应该伴随代价、风险、或者道德抉择`,
+
+      '玄幻': `- 世界观的展示通过人物体验，而非旁白介绍。让读者跟随主角的视角逐步发现世界的规则
+- 战斗场面重节奏和画面感，不堆砌技能名称。一个有力的动作胜过十招列举
+- 奇遇要有"分量感"——获得强大的力量同时也意味着更大的责任或代价`,
+
+      '都市': `- 对话是灵魂。都市小说的对话要真的像当代人在说话——有网络用语、有口头禅、有弦外之音
+- 场景描写要让读者"看到"画面。写一个办公室、一家咖啡店、一条街——写出它独有的细节
+- 人物关系靠互动来展示，不是靠旁白交代`,
+
+      '系统': `- 系统是工具不是主角。不要让系统面板和数值淹没了人物和情节
+- 系统提示要有"性格"——可以冷冰冰、可以俏皮、可以腹黑，但不能像产品说明书
+- 数值的增长要有叙事意义。Lv.5→Lv.6不是重点，解锁了"能听到他人心声"这个能力才是`,
+
+      '科幻': `- 技术设定通过人物体验和情节来呈现，避开"数据堆"式的说明段落
+- 科幻的核心是"如果…会怎样"的思想实验，不是技术说明书
+- 未来世界的日常感很重要——再先进的科技，对生活在其中的人来说就是日常`,
+
+      '武侠': `- 动作描写的节奏感重于招式名。用短句和动词营造画面
+- "江湖"不是背景板，是人际关系网、是利益纠葛、是恩怨情仇
+- 武功的传承和代价比武功本身更值得写`,
+    };
+
+    for (const [key, text] of Object.entries(guidance)) {
+      if (genre.includes(key)) return text;
+    }
+
+    return '';
   }
 
   // 构建摘要提取Prompt
@@ -516,19 +748,19 @@ ${outline}
   }
 
   // 构建章节大纲生成Prompt（新功能）
-  buildChapterOutlinePrompt(worldState, characters, summary, chapterCount, items = [], locations = []) {
+  buildChapterOutlinePrompt(worldState, characters, summary, chapterCount, items = [], locations = [], minorCharacters = [], timelineEvents = []) {
     // 角色列表
     const characterList = characters.map(c => {
       const realmOrLevel = c.realm || `Lv.${c.level}`;
       return `【${c.name}】${realmOrLevel} | 状态:${c.status}`;
     }).join('\n');
-    
+
     // 筛选存活角色
     const aliveCharacters = characters.filter(c => c.status !== '死亡').map(c => c.name).join('、');
     const deadCharacters = characters.filter(c => c.status === '死亡').map(c => c.name).join('、');
-    
+
     // 物品列表
-    const itemList = items.length > 0 
+    const itemList = items.length > 0
       ? items.map(i => `【${i.name}】类型:${i.type || '未知'} | 持有者:${i.owner || '无'} | 状态:${i.status}`).join('\n')
       : '暂无';
 
@@ -536,7 +768,17 @@ ${outline}
     const locationList = locations.length > 0
       ? locations.map(l => `【${l.name}】类型:${l.type || '未知'} | 状态:${l.status} | 描述:${l.description || '无'}`).join('\n')
       : '暂无';
-    
+
+    // 配角列表
+    const minorList = minorCharacters.length > 0
+      ? minorCharacters.map(m => `【${m.name}】角色:${m.role || '路人'} | 状态:${m.status}`).join('\n')
+      : '暂无';
+
+    // 时间线
+    const timeline = timelineEvents.length > 0
+      ? timelineEvents.map(e => `- ${e.event_date ? new Date(e.event_date).toLocaleDateString() : '?'} 【${e.type}】${e.title}: ${e.description || ''}`).join('\n')
+      : '暂无';
+
     return `你是一个专业的小说大纲规划AI。请根据当前小说状态，生成接下来${chapterCount}章的章节大纲。
 
 ======================== 世界设定（来自world_state表）========================
@@ -551,11 +793,17 @@ ${characterList}
 ⚠️ 存活角色：${aliveCharacters || '无'}
 ⚠️ 已死亡角色：${deadCharacters || '无'}
 
+======================== 配角信息（来自minor_character_state表）========================
+${minorList}
+
 ======================== 物品状态（来自item_state表）========================
 ${itemList}
 
 ======================== 地点状态（来自location_state表）========================
 ${locationList}
+
+======================== 故事时间线（来自timeline_events表）========================
+${timeline}
 
 ======================== 当前剧情摘要（来自story_summary表）========================
 ${summary || '故事刚开始'}
@@ -565,7 +813,7 @@ ${summary || '故事刚开始'}
 
 【角色分配】
 - 不同章节可以聚焦不同角色，实现角色轮换
-- 主角可以贯穿多章，配角按需出现
+- 主角可以贯穿多章，配角（包括minor角色）按需出现
 - 考虑角色成长弧线，合理安排角色发展
 - 死亡角色不能在后续章节中出现
 
@@ -580,6 +828,10 @@ ${summary || '故事刚开始'}
 - 某些章节可以深入探索特定地点
 - 地点状态变化可以作为重要情节点
 - 考虑地点与角色行动的逻辑关系
+
+【时间线遵循】
+- 大纲必须与已有时间线事件保持一致
+- 时间线中的事件应在对应章节中体现或承接
 
 【剧情节奏】
 - 前几章：铺垫和引入，建立冲突
@@ -842,10 +1094,10 @@ ${summary || '故事刚开始'}
   }
 
   // 生成章节目录（TOC）- 小批量直接生成，大批量自动分批
-  async generateTOC(worldState, characters, summary, chapterCount, config, onProgress) {
+  async generateTOC(worldState, characters, summary, chapterCount, config, items = [], locations = [], minorCharacters = [], onProgress) {
     // ≤60章：一次生成
     if (chapterCount <= 60) {
-      const prompt = this.buildTOCPrompt(worldState, characters, summary, chapterCount);
+      const prompt = this.buildTOCPrompt(worldState, characters, summary, chapterCount, items, locations, minorCharacters);
       const result = await this.chat([{ role: 'user', content: prompt }], 0.7, config, 4096);
       return this.parseJSON(result, 'TOC');
     }
@@ -856,7 +1108,7 @@ ${summary || '故事刚开始'}
 
     // 第一阶段：生成分卷规划
     if (onProgress) onProgress({ phase: 'planning', message: '正在规划分卷结构...' });
-    const volumePlanPrompt = this.buildVolumePlanPrompt(worldState, characters, summary, chapterCount, BATCH_SIZE, volumeCount);
+    const volumePlanPrompt = this.buildVolumePlanPrompt(worldState, characters, summary, chapterCount, BATCH_SIZE, volumeCount, items, locations, minorCharacters);
     const volumePlanRaw = await this.chat([{ role: 'user', content: volumePlanPrompt }], 0.7, config, 2000);
     const volumePlan = this.parseJSON(volumePlanRaw, '分卷规划');
 
@@ -881,7 +1133,8 @@ ${summary || '故事刚开始'}
       const batchPrompt = this.buildTOCBatchPrompt(
         worldState, characters, summary,
         startChapter, endChapter, volChapterCount,
-        vol, volumePlan.volumes.length, chapterCount
+        vol, volumePlan.volumes.length, chapterCount,
+        items, locations, minorCharacters
       );
 
       // 每卷最多重试2次
@@ -947,8 +1200,11 @@ ${summary || '故事刚开始'}
   }
 
   // 分卷规划Prompt
-  buildVolumePlanPrompt(worldState, characters, summary, chapterCount, batchSize, volumeCount) {
+  buildVolumePlanPrompt(worldState, characters, summary, chapterCount, batchSize, volumeCount, items = [], locations = [], minorCharacters = []) {
     const characterNames = characters.map(c => c.name).join('、');
+    const itemNames = items.map(i => i.name).join('、') || '暂无';
+    const locationNames = locations.map(l => l.name).join('、') || '暂无';
+    const minorNames = minorCharacters.map(m => m.name).join('、') || '暂无';
 
     return `你是一位资深的小说策划编辑。请为一部长篇小说规划分卷结构。
 
@@ -958,6 +1214,9 @@ ${summary || '故事刚开始'}
 【世界背景】${worldState?.background || '未设定'}
 【核心规则】${worldState?.rules || '未设定'}
 【主要角色】${characterNames || '暂无'}
+【配角】${minorNames}
+【重要物品】${itemNames}
+【主要地点】${locationNames}
 【剧情摘要】${summary || '故事刚开始'}
 
 ======================== 分卷规划 ========================
@@ -981,8 +1240,11 @@ ${summary || '故事刚开始'}
   }
 
   // 单卷章节标题生成Prompt
-  buildTOCBatchPrompt(worldState, characters, summary, startChapter, endChapter, volChapterCount, volumeInfo, totalVolumes, totalChapters) {
+  buildTOCBatchPrompt(worldState, characters, summary, startChapter, endChapter, volChapterCount, volumeInfo, totalVolumes, totalChapters, items = [], locations = [], minorCharacters = []) {
     const characterNames = characters.map(c => c.name).join('、');
+    const itemNames = items.map(i => i.name).join('、') || '暂无';
+    const locationNames = locations.map(l => l.name).join('、') || '暂无';
+    const minorNames = minorCharacters.map(m => m.name).join('、') || '暂无';
 
     return `你是一位资深的小说策划编辑。请为长篇小说的一卷生成详细章节目录。
 
@@ -992,6 +1254,9 @@ ${summary || '故事刚开始'}
 【风格】${worldState?.style || '未知'}
 【世界背景】${worldState?.background || '未设定'}
 【主要角色】${characterNames || '暂无'}
+【配角】${minorNames}
+【重要物品】${itemNames}
+【主要地点】${locationNames}
 【剧情摘要】${summary || '故事刚开始'}
 
 ======================== 当前分卷信息 ========================
@@ -1029,9 +1294,12 @@ ${volumeInfo.volume_number > 1 ? `【前卷概要】请承接上一卷《${volum
   }
 
   // 小批量TOC Prompt（≤60章，直接生成）
-  buildTOCPrompt(worldState, characters, summary, chapterCount) {
+  buildTOCPrompt(worldState, characters, summary, chapterCount, items = [], locations = [], minorCharacters = []) {
     const characterNames = characters.map(c => c.name).join('、');
     const aliveCharacters = characters.filter(c => c.status !== '死亡').map(c => c.name).join('、');
+    const itemNames = items.map(i => i.name).join('、') || '暂无';
+    const locationNames = locations.map(l => l.name).join('、') || '暂无';
+    const minorNames = minorCharacters.map(m => m.name).join('、') || '暂无';
 
     return `你是一位资深的小说策划编辑，擅长为小说规划章节目录。请根据小说的设定和当前状态，为一部长篇小说设计${chapterCount}章的章节目录。
 
@@ -1043,7 +1311,12 @@ ${volumeInfo.volume_number > 1 ? `【前卷概要】请承接上一卷《${volum
 
 ======================== 角色信息 ========================
 主要角色：${characterNames || '暂无'}
+配角：${minorNames}
 存活角色：${aliveCharacters || '暂无'}
+
+======================== 可用资源 ========================
+重要物品：${itemNames}
+主要地点：${locationNames}
 
 ======================== 当前剧情摘要 ========================
 ${summary || '故事刚开始'}

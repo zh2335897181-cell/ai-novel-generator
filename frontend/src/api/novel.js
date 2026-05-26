@@ -120,11 +120,12 @@ export default {
     return data
   },
 
-  async generateStoryStream(novelId, userInput, aiConfig, wordCount, onData) {
+  async generateStoryStream(novelId, userInput, aiConfig, wordCount, onData, signal = null) {
     const response = await authFetch(`${BASE}/novels/generate-stream`, {
       method: 'POST',
       headers: getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ novelId, userInput, aiConfig, wordCount })
+      body: JSON.stringify({ novelId, userInput, aiConfig, wordCount }),
+      signal
     })
 
     if (!response.ok) {
@@ -135,30 +136,49 @@ export default {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-      const text = decoder.decode(value)
-      const lines = text.split('\n').filter(line => line.trim() !== '')
+        const text = decoder.decode(value, { stream: true })
+        const lines = text.split('\n').filter(line => line.trim() !== '')
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        try {
-          const data = JSON.parse(line.substring(6))
-          onData(data)
-        } catch (e) {
-          if (e.message !== 'Unexpected end of JSON input') {
-            console.error('解析SSE数据失败:', e)
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.substring(6))
+            onData(data)
+          } catch (e) {
+            if (e.message !== 'Unexpected end of JSON input') {
+              console.error('解析SSE数据失败:', e)
+            }
           }
         }
       }
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        onData({ type: 'aborted', message: '生成已取消' })
+        return
+      }
+      throw e
     }
   },
 
   async getCharacters(novelId) {
     const response = await authFetch(`${BASE}/novels/${novelId}/characters`, {
       headers: getHeaders()
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message)
+    return data
+  },
+
+  async updateGenreStyle(novelId, genre, style) {
+    const response = await authFetch(`${BASE}/novels/genre-style`, {
+      method: 'PUT',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ novelId, genre, style })
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.message)

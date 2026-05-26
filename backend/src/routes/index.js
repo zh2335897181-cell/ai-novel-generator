@@ -31,8 +31,9 @@ router.get('/novels/:novelId/collaborators', (req, res) => novelController.getCo
 router.post('/novels/:novelId/collaborators', (req, res) => novelController.addCollaborator(req, res));
 router.put('/novels/:novelId/collaborators/:userId', (req, res) => novelController.updateCollaboratorPermission(req, res));
 router.delete('/novels/:novelId/collaborators/:userId', (req, res) => novelController.removeCollaborator(req, res));
-router.post('/novels/characters', novelController.addCharacter);
-router.put('/novels/world', novelController.updateWorld);
+router.post('/novels/characters', (req, res) => novelController.addCharacter(req, res));
+router.put('/novels/world', (req, res) => novelController.updateWorld(req, res));
+router.put('/novels/genre-style', (req, res) => novelController.updateGenreStyle(req, res));
 router.post('/novels/generate', novelController.generate);
 router.post('/novels/generate-stream', novelController.generateStream);
 router.get('/novels/:novelId/characters', novelController.getCharacters);

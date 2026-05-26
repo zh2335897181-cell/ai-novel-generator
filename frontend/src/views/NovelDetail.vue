@@ -638,15 +638,25 @@
                 type="primary"
                 class="generate-btn"
                 @click="generateStoryStream"
-                :loading="generating"
                 :disabled="novel?.status === 'blocked'"
                 data-shortcut="generate"
               >
                 <el-icon><MagicStick /></el-icon>
-                {{ novel?.status === 'blocked' ? '小说已封禁' : generating ? '生成中...' : '开始生成' }}
+                {{ novel?.status === 'blocked' ? '小说已封禁' : '开始生成' }}
                 <kbd class="btn-shortcut">Ctrl+S</kbd>
               </el-button>
             </el-tooltip>
+
+            <el-button
+              v-if="generating"
+              type="danger"
+              class="generate-btn"
+              @click="cancelGeneration"
+              style="margin-left: 8px;"
+            >
+              <el-icon><Close /></el-icon>
+              取消 ({{ streamingWordCount }}字)
+            </el-button>
 
             <!-- 流式输出区域 -->
             <div v-if="streamingContent" class="streaming-content">
@@ -794,9 +804,16 @@
             <el-button :disabled="!hasPrevChapter" @click="goToReadingChapter(currentChapterIndex - 1)">
               <el-icon><ArrowLeft /></el-icon>上一章
             </el-button>
-            <span class="reading-nav-info">
-              第{{ activeReadingChapterNumber }}章 / 共{{ totalChaptersReadable }}章
-            </span>
+            <div class="reading-nav-center">
+              <span class="reading-nav-info">
+                第{{ activeReadingChapterNumber }}章 / 共{{ totalChaptersReadable }}章
+              </span>
+              <span v-if="bgPregenActive" class="bg-pregen-indicator">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                第{{ bgPregenChapterNumber }}章预生成中...
+                <el-icon class="bg-pregen-close" @click.stop="cancelBgPregen"><Close /></el-icon>
+              </span>
+            </div>
             <el-button :disabled="!hasNextChapter" @click="goToReadingChapter(currentChapterIndex + 1)">
               下一章<el-icon><ArrowRight /></el-icon>
             </el-button>
@@ -804,11 +821,23 @@
 
           <!-- 内容卡片 -->
           <div class="reading-content-card">
-            <template v-if="activeReadingContent">
+            <template v-if="activeReadingContent && !isViewingPregeneratedChapter">
               <h2 v-if="activeReadingContent.chapter_title" class="reading-chapter-title">
                 {{ activeReadingContent.chapter_title }}
               </h2>
               <div class="reading-text">{{ activeReadingContent.content }}</div>
+            </template>
+
+            <!-- 正在流式生成中（用户翻到了正在预生成的章节） -->
+            <template v-else-if="isViewingPregeneratedChapter">
+              <h2 v-if="activeReadingOutline?.title" class="reading-chapter-title">
+                第{{ activeReadingChapterNumber }}章 {{ activeReadingOutline.title }}
+              </h2>
+              <div class="reading-text">{{ bgPregenContent }}</div>
+              <div class="pregenerating-indicator">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                正在生成中... {{ bgPregenWordCount }} 字
+              </div>
             </template>
 
             <!-- 未创作占位 -->
@@ -829,9 +858,16 @@
             <el-button :disabled="!hasPrevChapter" @click="goToReadingChapter(currentChapterIndex - 1)">
               <el-icon><ArrowLeft /></el-icon>上一章
             </el-button>
-            <span class="reading-nav-info">
-              第{{ activeReadingChapterNumber }}章 / 共{{ totalChaptersReadable }}章
-            </span>
+            <div class="reading-nav-center">
+              <span class="reading-nav-info">
+                第{{ activeReadingChapterNumber }}章 / 共{{ totalChaptersReadable }}章
+              </span>
+              <span v-if="bgPregenActive" class="bg-pregen-indicator">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                第{{ bgPregenChapterNumber }}章预生成中...
+                <el-icon class="bg-pregen-close" @click.stop="cancelBgPregen"><Close /></el-icon>
+              </span>
+            </div>
             <el-button :disabled="!hasNextChapter" @click="goToReadingChapter(currentChapterIndex + 1)">
               下一章<el-icon><ArrowRight /></el-icon>
             </el-button>
@@ -926,6 +962,72 @@
         <el-button type="primary" @click="parseOutline" :loading="parsing">
           <el-icon><MagicStick /></el-icon>
           开始拆解
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI拆解后 - 选择小说类型与基调 -->
+    <el-dialog v-model="showGenreToneDialog" title="确认小说类型与基调" width="600px" :close-on-click-modal="false">
+      <el-alert
+        title="AI已成功拆解大纲，请确认以下信息以优化创作方向"
+        type="success"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      />
+
+      <el-form :model="genreToneForm" label-width="100px">
+        <el-form-item label="小说类型">
+          <el-select v-model="genreToneForm.genre" placeholder="请选择小说类型" style="width: 100%">
+            <el-option label="都市" value="都市" />
+            <el-option label="玄幻" value="玄幻" />
+            <el-option label="修仙" value="修仙" />
+            <el-option label="武侠" value="武侠" />
+            <el-option label="系统" value="系统" />
+            <el-option label="科幻" value="科幻" />
+            <el-option label="魔法" value="魔法" />
+            <el-option label="历史" value="历史" />
+            <el-option label="悬疑" value="悬疑" />
+            <el-option label="游戏" value="游戏" />
+            <el-option label="末世" value="末世" />
+            <el-option label="无限流" value="无限流" />
+            <el-option label="轻小说" value="轻小说" />
+            <el-option label="奇幻" value="奇幻" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="全文基调">
+          <el-select v-model="genreToneForm.style" placeholder="请选择文字风格/基调" style="width: 100%">
+            <el-option label="热血爽文" value="热血爽文" />
+            <el-option label="轻松搞笑" value="轻松搞笑" />
+            <el-option label="沉稳厚重" value="沉稳厚重" />
+            <el-option label="诙谐幽默" value="诙谐幽默" />
+            <el-option label="暗黑残酷" value="暗黑残酷" />
+            <el-option label="温馨治愈" value="温馨治愈" />
+            <el-option label="史诗宏大" value="史诗宏大" />
+            <el-option label="紧张刺激" value="紧张刺激" />
+            <el-option label="悬疑推理" value="悬疑推理" />
+            <el-option label="文艺细腻" value="文艺细腻" />
+            <el-option label="写实冷峻" value="写实冷峻" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="补充说明">
+          <el-input
+            v-model="genreToneForm.customStyle"
+            type="textarea"
+            :rows="3"
+            placeholder="可补充更多风格偏好，例如：第三人称、多线叙事、反转密集、金手指明显..."
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="skipGenreTone">跳过</el-button>
+        <el-button type="primary" @click="saveGenreTone" :loading="savingGenreTone">
+          <el-icon><Check /></el-icon>
+          确认保存
         </el-button>
       </template>
     </el-dialog>
@@ -1322,7 +1424,7 @@
 import { ref, onMounted, computed, nextTick, watch, onUnmounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown, Menu, Sunny, Moon, FullScreen, Share, ChatDotRound, Collection, Aim, Star, DataLine, EditPen, DataAnalysis, Delete, CircleCheckFilled, MoreFilled
+import { ArrowLeft, MagicStick, Document, Reading, TrendCharts, Lock, Unlock, OfficeBuilding, User, UserFilled, Box, Location, Edit, Plus, Close, ArrowRight, Loading, Right, Download, Calendar, ArrowUp, ArrowDown, Menu, Sunny, Moon, FullScreen, Share, ChatDotRound, Collection, Aim, Star, DataLine, EditPen, DataAnalysis, Delete, CircleCheckFilled, MoreFilled, Check
 } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
@@ -1410,6 +1512,7 @@ const streamingWordCount = ref(0)
 const showWorldDialog = ref(false)
 const showCharacterDialog = ref(false)
 const showOutlineDialog = ref(false)
+const showGenreToneDialog = ref(false)
 const showChapterDialog = ref(false)
 const showTOCDialog = ref(false)
 const showChapterOutlineDialog = ref(false)
@@ -1417,6 +1520,13 @@ const selectedChapter = ref(null)
 const regeneratingOutline = ref(false)
 const isReadingMode = ref(false)
 const activeReadingChapterNumber = ref(null)
+// 后台预生成状态
+const bgPregenActive = ref(false)
+const bgPregenChapterNumber = ref(null)
+const bgPregenContent = ref('')
+const bgPregenWordCount = ref(0)
+const bgPregenAbortController = ref(null)
+const generationAbortController = ref(null)
 const showGrowthChart = ref(false)
 const showCollaboratorDialog = ref(false)
 const collaborators = ref([])
@@ -1493,6 +1603,8 @@ const generateDialogue = async () => {
 const worldForm = ref({ genre: '', style: '', rules: '', background: '' })
 const characterForm = ref({ name: '', level: 1, attributes: '{}' })
 const outlineForm = ref({ outline: '' })
+const genreToneForm = ref({ genre: '', style: '', customStyle: '' })
+const savingGenreTone = ref(false)
 const chapterForm = ref({ chapterCount: 5 })
 const tocForm = ref({ chapterCount: 20 })
 const parsing = ref(false)
@@ -1929,6 +2041,99 @@ const handleUseChapterOutline = () => {
   showChapterOutlineDialog.value = false
 }
 
+// ===== 后台预生成 =====
+
+const cancelBgPregen = () => {
+  if (bgPregenAbortController.value) {
+    bgPregenAbortController.value.abort()
+  }
+  bgPregenActive.value = false
+  bgPregenChapterNumber.value = null
+  bgPregenContent.value = ''
+  bgPregenWordCount.value = 0
+  bgPregenAbortController.value = null
+}
+
+const findNextUnwrittenChapter = (currentChapterNumber) => {
+  const maxContentChapter = contents.value.length > 0
+    ? Math.max(...contents.value.map(c => c.chapter_number))
+    : 0
+  const targetNumber = Math.max(currentChapterNumber + 1, maxContentChapter + 1)
+  if (targetNumber !== maxContentChapter + 1) return null
+  const nextOutline = chapterOutlines.value.find(
+    co => co.chapter_number === targetNumber
+  )
+  if (!nextOutline?.outline) return null
+  const alreadyExists = contents.value.some(c => c.chapter_number === targetNumber)
+  if (alreadyExists) return null
+  return nextOutline
+}
+
+const startBgPregen = async (targetChapterNumber) => {
+  const outline = chapterOutlines.value.find(
+    co => co.chapter_number === targetChapterNumber
+  )
+  if (!outline?.outline) return
+
+  if (!aiConfigStore.isConfigured()) return
+
+  if (bgPregenAbortController.value) {
+    bgPregenAbortController.value.abort()
+  }
+
+  const userInput = `请根据以下大纲生成第${outline.chapter_number}章《${outline.title}》：\n${outline.outline}`
+  bgPregenActive.value = true
+  bgPregenChapterNumber.value = targetChapterNumber
+  bgPregenContent.value = ''
+  bgPregenWordCount.value = 0
+  bgPregenAbortController.value = new AbortController()
+
+  try {
+    const aiConfig = aiConfigStore.getConfig()
+    await api.generateStoryStream(
+      novelId.value,
+      userInput,
+      aiConfig,
+      generateForm.value.wordCount,
+      (data) => {
+        if (data.type === 'content') {
+          bgPregenContent.value += data.content
+          bgPregenWordCount.value = data.wordCount
+        } else if (data.type === 'done') {
+          // 先刷新数据再清理流式状态，确保阅读视图平滑过渡
+          loadDetail().finally(() => {
+            bgPregenActive.value = false
+            bgPregenChapterNumber.value = null
+            bgPregenContent.value = ''
+            bgPregenWordCount.value = 0
+            bgPregenAbortController.value = null
+            // 继续预生成下一章
+            const next = findNextUnwrittenChapter(targetChapterNumber)
+            if (next) {
+              nextTick(() => startBgPregen(next.chapter_number))
+            }
+          })
+        } else if (data.type === 'error' || data.error) {
+          bgPregenActive.value = false
+          bgPregenChapterNumber.value = null
+          bgPregenContent.value = ''
+          bgPregenWordCount.value = 0
+          bgPregenAbortController.value = null
+        }
+      }
+    )
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.warn('后台预生成失败:', e.message)
+    }
+    bgPregenActive.value = false
+    bgPregenChapterNumber.value = null
+    bgPregenContent.value = ''
+    bgPregenWordCount.value = 0
+    bgPregenAbortController.value = null
+  }
+}
+
 // ===== 阅读模式方法 =====
 
 const enterReadingMode = (chapter) => {
@@ -1938,12 +2143,16 @@ const enterReadingMode = (chapter) => {
   nextTick(() => {
     const readingView = document.querySelector('.reading-view')
     if (readingView) readingView.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // 触发后台预生成下一章
+    const next = findNextUnwrittenChapter(chapter.chapter_number)
+    if (next) startBgPregen(next.chapter_number)
   })
 }
 
 const exitReadingMode = () => {
   isReadingMode.value = false
   activeReadingChapterNumber.value = null
+  cancelBgPregen()
 }
 
 const goToReadingChapter = (index) => {
@@ -1953,6 +2162,9 @@ const goToReadingChapter = (index) => {
   nextTick(() => {
     const readingView = document.querySelector('.reading-view')
     if (readingView) readingView.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // 触发后台预生成下一章
+    const next = findNextUnwrittenChapter(chapter.chapter_number)
+    if (next) startBgPregen(next.chapter_number)
   })
 }
 
@@ -2145,6 +2357,13 @@ const addCharacter = async () => {
 }
 
 // 流式生成小说（新功能）
+const cancelGeneration = () => {
+  if (generationAbortController.value) {
+    generationAbortController.value.abort()
+    generationAbortController.value = null
+  }
+}
+
 const generateStoryStream = async () => {
   if (!generateForm.value.userInput.trim()) {
     ElMessage.warning('请输入剧情指令')
@@ -2158,18 +2377,19 @@ const generateStoryStream = async () => {
     ElMessage.error('该小说已被封禁，无法生成新章节')
     return
   }
-  
+
   generating.value = true
   streamingContent.value = ''
   streamingWordCount.value = 0
-  
+  generationAbortController.value = new AbortController()
+
   try {
     const aiConfig = aiConfigStore.getConfig()
-    
+
     await api.generateStoryStream(
-      novelId.value, 
-      generateForm.value.userInput, 
-      aiConfig, 
+      novelId.value,
+      generateForm.value.userInput,
+      aiConfig,
       generateForm.value.wordCount,
       (data) => {
         if (data.type === 'content') {
@@ -2177,6 +2397,26 @@ const generateStoryStream = async () => {
           streamingWordCount.value = data.wordCount
         } else if (data.type === 'generating') {
           ElMessage.info(data.message)
+        } else if (data.type === 'aborted') {
+          // 中断时保存部分内容为草稿
+          if (streamingContent.value.length > 100) {
+            try {
+              const draftKey = `draft_${novelId.value}_${Date.now()}`
+              localStorage.setItem(draftKey, JSON.stringify({
+                content: streamingContent.value,
+                wordCount: streamingWordCount.value,
+                userInput: generateForm.value.userInput,
+                timestamp: new Date().toISOString()
+              }))
+              ElMessage.info(`生成已取消，部分内容已保存为草稿（${streamingWordCount.value}字）`)
+            } catch (e) {
+              ElMessage.info('生成已取消')
+            }
+          } else {
+            ElMessage.info('生成已取消')
+          }
+          streamingContent.value = ''
+          streamingWordCount.value = 0
         } else if (data.type === 'done') {
           let successMsg = `生成完成！共 ${data.wordCount} 字`
           if (data.flowSummary) {
@@ -2192,8 +2432,22 @@ const generateStoryStream = async () => {
           streamingContent.value = ''
           streamingWordCount.value = 0
           generateForm.value.userInput = ''
+          // 使用增量更新：仅刷新角色列表和摘要，不完全重载
           loadDetail()
         } else if (data.error) {
+          // 保存部分内容避免丢失
+          if (streamingContent.value.length > 100) {
+            try {
+              const draftKey = `draft_${novelId.value}_${Date.now()}`
+              localStorage.setItem(draftKey, JSON.stringify({
+                content: streamingContent.value,
+                wordCount: streamingWordCount.value,
+                userInput: generateForm.value.userInput,
+                timestamp: new Date().toISOString()
+              }))
+              ElMessage.warning(`生成中断，部分内容已保存为草稿（${streamingWordCount.value}字）`)
+            } catch (e) { /* ignore */ }
+          }
           throw new Error(data.error)
         } else if (data.type === 'error') {
           let errorMsg = '生成失败'
@@ -2208,13 +2462,29 @@ const generateStoryStream = async () => {
           }
           ElMessage.error(errorMsg)
         }
-      }
+      },
+      generationAbortController.value.signal
     )
   } catch (error) {
-    ElMessage.error('生成失败：' + error.message)
+    if (error.name !== 'AbortError') {
+      ElMessage.error('生成失败：' + error.message)
+      // 网络错误时也保存草稿
+      if (streamingContent.value.length > 100) {
+        try {
+          const draftKey = `draft_${novelId.value}_${Date.now()}`
+          localStorage.setItem(draftKey, JSON.stringify({
+            content: streamingContent.value,
+            wordCount: streamingWordCount.value,
+            userInput: generateForm.value.userInput,
+            timestamp: new Date().toISOString()
+          }))
+        } catch (e) { /* ignore */ }
+      }
+    }
     streamingContent.value = ''
   } finally {
     generating.value = false
+    generationAbortController.value = null
   }
 }
 
@@ -2243,9 +2513,10 @@ const parseOutline = async () => {
     const aiConfig = aiConfigStore.getConfig()
     const res = await api.parseOutline(novelId.value, outlineForm.value.outline, aiConfig)
     
-    ElMessage.success('拆解成功！已自动初始化世界观和角色')
+    ElMessage.success('拆解成功！请确认小说类型与基调')
     showOutlineDialog.value = false
     outlineForm.value.outline = ''
+    showGenreToneDialog.value = true
     
     // 刷新页面数据
     loadDetail()
@@ -2254,6 +2525,34 @@ const parseOutline = async () => {
   } finally {
     parsing.value = false
   }
+}
+
+// 保存用户选择的类型与基调
+const saveGenreTone = async () => {
+  savingGenreTone.value = true
+  try {
+    const genre = genreToneForm.value.genre
+    const style = genreToneForm.value.style
+    const custom = genreToneForm.value.customStyle?.trim()
+
+    // 如果有自定义补充说明，追加到style字段
+    const finalStyle = custom ? (style ? `${style}；${custom}` : custom) : style
+
+    await api.updateGenreStyle(novelId.value, genre || '', finalStyle || '')
+    ElMessage.success('类型与基调已保存')
+    showGenreToneDialog.value = false
+    genreToneForm.value = { genre: '', style: '', customStyle: '' }
+    loadDetail()
+  } catch (error) {
+    ElMessage.error('保存失败：' + (error.response?.data?.message || error.message))
+  } finally {
+    savingGenreTone.value = false
+  }
+}
+
+const skipGenreTone = () => {
+  showGenreToneDialog.value = false
+  genreToneForm.value = { genre: '', style: '', customStyle: '' }
 }
 
 // 打开对话框时，用现有章节目录初始化勾选列表
@@ -2485,6 +2784,9 @@ const activeReadingOutline = computed(() => {
 const activeReadingContent = computed(() => {
   if (!activeReadingChapterNumber.value) return null
   return contents.value.find(c => c.chapter_number === activeReadingChapterNumber.value) || null
+})
+const isViewingPregeneratedChapter = computed(() => {
+  return bgPregenActive.value && activeReadingChapterNumber.value === bgPregenChapterNumber.value
 })
 const currentChapterIndex = computed(() => {
   if (!activeReadingChapterNumber.value) return -1
@@ -5689,6 +5991,52 @@ watch(showCollaboratorDialog, (val) => {
 .reading-nav-info {
   font-size: var(--text-sm, 13px);
   color: var(--text-muted);
+  font-weight: 500;
+}
+
+.reading-nav-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 后台预生成指示器 */
+.bg-pregen-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-primary, #409EFF);
+  font-weight: 500;
+  animation: pregenPulse 2s ease-in-out infinite;
+}
+
+@keyframes pregenPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.bg-pregen-close {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+  flex-shrink: 0;
+}
+.bg-pregen-close:hover {
+  color: var(--text-primary);
+}
+
+/* 内容区预生成提示 */
+.pregenerating-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 0 8px;
+  font-size: 13px;
+  color: var(--color-primary, #409EFF);
   font-weight: 500;
 }
 
